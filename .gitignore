@@ -1,0 +1,13 @@
+# Secrets
+functions/.env
+
+# Node
+functions/node_modules/
+functions/lib/
+
+# Flutter
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.README.md
