@@ -6,8 +6,7 @@ The app ships with the **client's own website** (SechTummit Trainers, a stand-in
 
 One Flutter codebase → **Android app + web app**. Firebase for data, Cloud Functions + Gemini for the AI brain.
 
-📐 **Architecture, data model and flow diagrams:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-🟢 **WhatsApp setup, step by step:** [docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md)
+🟢 **WhatsApp setup, step by step:** [docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md) (setup done)
 
 ---
 
