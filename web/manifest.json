@@ -1,12 +1,12 @@
 {
-    "name": "lead_desk",
-    "short_name": "lead_desk",
+    "name": "SechTummit Trainers · AI Lead Desk",
+    "short_name": "Lead Desk",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#F7F7FB",
+    "theme_color": "#4F46E5",
+    "description": "AI admissions counsellor and live lead dashboard for training institutes.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

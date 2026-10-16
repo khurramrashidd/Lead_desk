@@ -6,7 +6,8 @@ import '../utils/ist.dart';
 
 final _calendarLink = RegExp(r'https://calendar\.google\.com\S+');
 
-/// One chat bubble. Used in the student chat and the counsellor desk.
+/// One chat bubble. Shared by the student chat and the counsellor desk —
+/// [prospectView] flips the sides and hides the internal labels.
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
@@ -38,35 +39,31 @@ class MessageBubble extends StatelessWidget {
   final DateTime? at;
   final String? channel;
   final Map<String, dynamic> meta;
-  final bool prospectView; // true = student's screen (their messages on the right)
+  final bool prospectView;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    if (role == 'system') {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Center(
-          child: Text('— $text —', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-        ),
-      );
-    }
+    if (role == 'system') return _SystemLine(text: text);
 
     final fromProspect = role == 'user';
     final alignRight = prospectView ? fromProspect : !fromProspect;
     final automatic = meta['automatic'] == true;
     final guardBlocked = (meta['guard'] as Map?)?['blocked'] == true;
+    final scheme = context.scheme;
 
-    Color bg;
-    Color fg;
-    if (fromProspect) {
-      bg = prospectView ? scheme.primary : scheme.surfaceContainerHighest;
-      fg = prospectView ? scheme.onPrimary : scheme.onSurface;
+    late final Color bg;
+    late final Color fg;
+    if (fromProspect && prospectView) {
+      bg = AppTheme.indigo;
+      fg = Colors.white;
+    } else if (fromProspect) {
+      bg = scheme.surfaceContainerHigh;
+      fg = scheme.onSurface;
     } else if (role == 'counsellor') {
-      bg = AppTheme.human.withValues(alpha: 0.15);
+      bg = AppTheme.human.withValues(alpha: context.isDark ? 0.22 : 0.12);
       fg = scheme.onSurface;
     } else {
-      bg = prospectView ? scheme.surfaceContainerHighest : AppTheme.ai.withValues(alpha: 0.13);
+      bg = scheme.surface;
       fg = scheme.onSurface;
     }
 
@@ -75,11 +72,11 @@ class MessageBubble extends StatelessWidget {
 
     String label = '';
     if (!prospectView) {
-      if (role == 'ai') label = automatic ? '🤖 Asha · ${_kind(meta['kind'])}' : '🤖 Asha (AI)';
+      if (role == 'ai') label = automatic ? '✨ Asha · ${_kind(meta['kind'])}' : '✨ Asha (AI)';
       if (role == 'counsellor') label = '🧑 ${meta['by'] ?? 'Counsellor'}';
-      if (role == 'user') label = '${_channelEmoji(channel)} Prospect';
+      if (role == 'user') label = _channelLabel(channel);
     } else if (role == 'counsellor') {
-      label = '${meta['by'] ?? 'Counsellor'} · TechSummitTrainers';
+      label = '${meta['by'] ?? 'Counsellor'} · SechTummit Trainers';
     }
 
     return Align(
@@ -88,51 +85,69 @@ class MessageBubble extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 520),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(alignRight ? 16 : 4),
-              bottomRight: Radius.circular(alignRight ? 4 : 16),
+              topLeft: const Radius.circular(18),
+              topRight: const Radius.circular(18),
+              bottomLeft: Radius.circular(alignRight ? 18 : 5),
+              bottomRight: Radius.circular(alignRight ? 5 : 18),
             ),
-            border: guardBlocked && !prospectView ? Border.all(color: AppTheme.guard, width: 1.2) : null,
+            border: guardBlocked && !prospectView
+                ? Border.all(color: AppTheme.guard.withValues(alpha: 0.5), width: 1.2)
+                : (role == 'ai' && !prospectView) || (role == 'ai' && prospectView)
+                    ? Border.all(color: context.scheme.outlineVariant)
+                    : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               if (label.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
-                  child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg.withValues(alpha: 0.7))),
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.3,
+                      color: fg.withValues(alpha: 0.65),
+                    ),
+                  ),
                 ),
               if (isVoice)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.graphic_eq, size: 18, color: fg),
-                  const SizedBox(width: 6),
-                  Flexible(child: Text(shown.isEmpty ? 'Voice note' : shown, style: TextStyle(color: fg, fontStyle: FontStyle.italic))),
-                ])
+                _VoiceRow(label: shown.isEmpty ? 'Voice note' : shown, color: fg)
               else
-                SelectableText(shown, style: TextStyle(color: fg, height: 1.35)),
+                SelectableText(shown, style: TextStyle(color: fg, height: 1.45, fontSize: 14.5)),
               if (isVoice && transcript != null && transcript!.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text('“$transcript”', style: TextStyle(color: fg, height: 1.35)),
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('“$transcript”',
+                      style: TextStyle(color: fg.withValues(alpha: 0.92), height: 1.45, fontSize: 14)),
                 ),
               if (link != null)
                 Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: FilledButton.tonalIcon(
-                    icon: const Icon(Icons.event_available, size: 18),
+                  padding: const EdgeInsets.only(top: 10),
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.event_available, size: 17),
                     label: const Text('Add to Google Calendar'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      backgroundColor: prospectView ? Colors.white : AppTheme.indigo,
+                      foregroundColor: prospectView ? AppTheme.indigoDeep : Colors.white,
+                      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
                     onPressed: () => launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication),
                   ),
                 ),
               if (guardBlocked && !prospectView) _GuardNote(meta: meta),
-              const SizedBox(height: 2),
-              Text(at == null ? 'sending…' : Ist.time(at!),
-                  style: TextStyle(fontSize: 10, color: fg.withValues(alpha: 0.6))),
+              const SizedBox(height: 3),
+              Text(
+                at == null ? 'sending…' : Ist.time(at!),
+                style: TextStyle(fontSize: 10, color: fg.withValues(alpha: 0.55)),
+              ),
             ],
           ),
         ),
@@ -140,35 +155,74 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  static String _kind(Object? k) {
-    switch (k) {
-      case 'reminder_24h':
-        return 'reminder (24 h)';
-      case 'reminder_1h':
-        return 'reminder (1 h)';
-      case 'followup':
-        return 'auto follow-up';
-      default:
-        return 'automatic';
-    }
-  }
+  static String _kind(Object? k) => switch (k) {
+        'reminder_24h' => 'reminder, 24 h before',
+        'reminder_1h' => 'reminder, 1 h before',
+        'followup' => 'automatic follow-up',
+        _ => 'automatic',
+      };
 
-  static String _channelEmoji(String? c) {
-    switch (c) {
-      case 'whatsapp':
-        return '🟢 WhatsApp';
-      case 'form':
-        return '📝 Form';
-      case 'walkin':
-        return '🚶 Walk-in';
-      case 'call':
-        return '📞 Call';
-      case 'instagram':
-        return '📸 Instagram';
-      default:
-        return '🌐 Web';
-    }
+  static String _channelLabel(String? c) => switch (c) {
+        'whatsapp' => '🟢 WhatsApp',
+        'form' => '📝 Website form',
+        'walkin' => '🚶 Walk-in',
+        'call' => '📞 Call',
+        'instagram' => '📸 Instagram',
+        _ => '🌐 Web chat',
+      };
+}
+
+class _VoiceRow extends StatelessWidget {
+  const _VoiceRow({required this.label, required this.color});
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    // A static waveform: enough to read as audio without pretending to play it.
+    const bars = [6.0, 11.0, 17.0, 9.0, 14.0, 20.0, 8.0, 13.0, 7.0, 16.0, 10.0, 5.0];
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.graphic_eq_rounded, size: 18, color: color.withValues(alpha: 0.9)),
+        const SizedBox(width: 8),
+        for (final b in bars)
+          Container(
+            width: 2.5,
+            height: b,
+            margin: const EdgeInsets.symmetric(horizontal: 1),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Text(label,
+              style: TextStyle(color: color.withValues(alpha: 0.9), fontSize: 12.5, fontWeight: FontWeight.w600)),
+        ),
+      ],
+    );
   }
+}
+
+class _SystemLine extends StatelessWidget {
+  const _SystemLine({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(children: [
+          Expanded(child: Divider(color: context.scheme.outlineVariant)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(text,
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: context.scheme.onSurfaceVariant)),
+          ),
+          Expanded(child: Divider(color: context.scheme.outlineVariant)),
+        ]),
+      );
 }
 
 class _GuardNote extends StatelessWidget {
@@ -179,28 +233,56 @@ class _GuardNote extends StatelessWidget {
   Widget build(BuildContext context) {
     final draft = (meta['guard'] as Map?)?['draft'] as String? ?? '';
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.only(top: 8),
       child: InkWell(
+        borderRadius: BorderRadius.circular(8),
         onTap: () => showDialog<void>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('🛡 Guard blocked the first draft'),
-            content: Text('The AI\'s first draft contained something not in the knowledge base, so it was rewritten before sending:\n\n“$draft”'),
-            actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('OK'))],
+            icon: const Icon(Icons.shield_rounded, color: AppTheme.guard, size: 32),
+            title: const Text('Guard blocked the first draft'),
+            content: Text(
+              'The AI\'s first draft contained something that is not in the institute\'s knowledge base, '
+              'so it was rewritten before anything was sent:\n\n“$draft”',
+              style: const TextStyle(height: 1.5),
+            ),
+            actions: [FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Got it'))],
           ),
         ),
-        child: const Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.shield, size: 16, color: AppTheme.guard),
-          SizedBox(width: 4),
-          Text('Guard rewrote an invented claim · tap', style: TextStyle(fontSize: 11, color: AppTheme.guard, fontWeight: FontWeight.w600)),
-        ]),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppTheme.guard.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.shield_rounded, size: 14, color: AppTheme.guard),
+            SizedBox(width: 6),
+            Text('Guard rewrote an invented claim — tap to see',
+                style: TextStyle(fontSize: 11, color: AppTheme.guard, fontWeight: FontWeight.w700)),
+          ]),
+        ),
       ),
     );
   }
 }
 
-class TypingIndicator extends StatelessWidget {
+class TypingIndicator extends StatefulWidget {
   const TypingIndicator({super.key});
+
+  @override
+  State<TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -208,16 +290,39 @@ class TypingIndicator extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
+          color: context.scheme.surface,
+          border: Border.all(color: context.scheme.outlineVariant),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(18),
+            topRight: Radius.circular(18),
+            bottomRight: Radius.circular(18),
+            bottomLeft: Radius.circular(5),
+          ),
         ),
-        child: const Row(mainAxisSize: MainAxisSize.min, children: [
-          SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-          SizedBox(width: 8),
-          Text('Asha is typing…'),
-        ]),
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < 3; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                  child: Opacity(
+                    opacity: 0.35 + 0.65 * ((((_c.value * 3) - i) % 3).clamp(0.0, 1.0)),
+                    child: Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(color: AppTheme.indigo, shape: BoxShape.circle),
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 10),
+              Text('Asha is typing…', style: context.texts.bodySmall?.copyWith(fontSize: 12.5)),
+            ],
+          ),
+        ),
       ),
     );
   }

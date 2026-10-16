@@ -128,7 +128,7 @@ class Seed {
       for (final p in plan) {
         final start = _istToUtc(day, p[0] as int, p[1] as int);
         if (start.isBefore(DateTime.now().add(const Duration(hours: 1)))) continue;
-        final id = 'slot_${day.year}${_2(day.month)}${_2(day.day)}_${_2(p[0] as int)}${_2(p[1] as int)}';
+        final id = 'slot_${day.year}${_pad2(day.month)}${_pad2(day.day)}_${_pad2(p[0] as int)}${_pad2(p[1] as int)}';
         batch.set(Repo.db.collection('slots').doc(id), {
           'title': p[2],
           'mode': p[3],
@@ -145,7 +145,7 @@ class Seed {
     return count;
   }
 
-  static String _2(int n) => n.toString().padLeft(2, '0');
+  static String _pad2(int n) => n.toString().padLeft(2, '0');
 
   /// Realistic demo leads so the dashboard and reports look alive.
   static Future<void> loadDemoLeads() async {

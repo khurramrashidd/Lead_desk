@@ -4,48 +4,57 @@ import 'package:flutter/material.dart';
 import '../../app_theme.dart';
 import '../../services/repo.dart';
 import '../../widgets/lead_widgets.dart';
+import 'desk_kpis.dart';
 
-/// "Where do our admissions really come from?" Conversion by source, counsellor and objection.
+/// "Where do our admissions really come from?" — conversion by source,
+/// by counsellor and by the objection the prospect raised.
 class ReportsView extends StatelessWidget {
   const ReportsView({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
-      stream: Repo.watchLeads(),
-      builder: (context, snap) {
-        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-        final leads = snap.data!.map((d) => d.data()).toList();
-        final total = leads.length;
-        final admitted = leads.where((l) => l['status'] == 'admitted').length;
-        final booked = leads.where((l) => l['status'] == 'demo_booked' || l['booking'] != null).length;
-        final hot = leads.where((l) => l['temperature'] == 'hot').length;
+    return Container(
+      color: context.scheme.surfaceContainerLow,
+      child: StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+        stream: Repo.watchLeads(),
+        builder: (context, snap) {
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          final leads = snap.data!.map((d) => d.data()).toList();
 
-        final bySource = _group(leads, (l) => [(l['firstSource'] as String?) ?? 'web']);
-        final byCounsellor = _group(leads, (l) => [(l['assignedTo'] as String?) ?? 'AI only']);
-        final byObjection = _group(leads, (l) => ((l['objections'] as List?)?.cast<String>() ?? const <String>[]));
+          final bySource = _group(leads, (l) => [(l['firstSource'] as String?) ?? 'web']);
+          final byCounsellor = _group(leads, (l) => [(l['assignedTo'] as String?) ?? 'Asha only']);
+          final byObjection = _group(leads, (l) => (l['objections'] as List?)?.cast<String>() ?? const <String>[]);
 
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Wrap(spacing: 10, runSpacing: 10, children: [
-              _Kpi('Leads', '$total', Icons.people),
-              _Kpi('Hot', '$hot', Icons.local_fire_department),
-              _Kpi('Demos booked', '$booked', Icons.event_available),
-              _Kpi('Admitted', '$admitted', Icons.school),
-              _Kpi('Conversion', total == 0 ? '-' : '${(admitted * 100 / total).toStringAsFixed(0)}%', Icons.trending_up),
-            ]),
-            const SizedBox(height: 16),
-            _Section('Conversion by source', bySource, labels: sourceLabels),
-            _Section('Conversion by counsellor', byCounsellor),
-            _Section('Objections raised (and how many still admitted)', byObjection, labels: objectionLabels),
-          ],
-        );
-      },
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 36),
+            children: [
+              KpiStrip(leads: leads),
+              const SizedBox(height: 24),
+              _Chart(title: 'Conversion by source', subtitle: 'Which channel actually produces admissions', data: bySource, labels: sourceLabels),
+              _Chart(title: 'Conversion by counsellor', subtitle: 'Who is converting the leads they are given', data: byCounsellor),
+              _Chart(
+                title: 'Objections raised',
+                subtitle: 'What stops people — and how many still joined',
+                data: byObjection,
+                labels: objectionLabels,
+              ),
+              if (leads.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: Text('No leads yet. Open Admin → Load demo data to populate these reports.',
+                      textAlign: TextAlign.center, style: context.texts.bodyMedium),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 
-  Map<String, (int, int)> _group(List<Map<String, dynamic>> leads, List<String> Function(Map<String, dynamic>) keys) {
+  Map<String, (int, int)> _group(
+    List<Map<String, dynamic>> leads,
+    List<String> Function(Map<String, dynamic>) keys,
+  ) {
     final out = <String, (int, int)>{};
     for (final l in leads) {
       for (final k in keys(l)) {
@@ -57,81 +66,137 @@ class ReportsView extends StatelessWidget {
   }
 }
 
-class _Kpi extends StatelessWidget {
-  const _Kpi(this.label, this.value, this.icon);
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 150,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(icon, color: scheme.primary),
-            const SizedBox(height: 6),
-            Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-            Text(label, style: TextStyle(color: scheme.onSurfaceVariant)),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-class _Section extends StatelessWidget {
-  const _Section(this.title, this.data, {this.labels = const {}});
+class _Chart extends StatelessWidget {
+  const _Chart({required this.title, required this.data, this.labels = const {}, this.subtitle});
   final String title;
+  final String? subtitle;
   final Map<String, (int, int)> data;
   final Map<String, String> labels;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final rows = data.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1));
     final max = rows.isEmpty ? 1 : rows.first.value.$1;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 14),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-          const SizedBox(height: 4),
-          Text('Bar = leads · green part = admitted', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+      decoration: BoxDecoration(
+        color: context.scheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.r20),
+        border: Border.all(color: context.scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: context.texts.titleMedium),
+          if (subtitle != null) ...[
+            const SizedBox(height: 3),
+            Text(subtitle!, style: context.texts.bodySmall?.copyWith(fontSize: 12.5)),
+          ],
           const SizedBox(height: 10),
-          if (rows.isEmpty) const Text('No data yet'),
+          Row(children: [
+            _Legend(color: AppTheme.indigo.withValues(alpha: 0.25), label: 'leads'),
+            const SizedBox(width: 14),
+            const _Legend(color: AppTheme.human, label: 'admitted'),
+          ]),
+          const SizedBox(height: 16),
+          if (rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Text('No data yet', style: context.texts.bodyMedium),
+            ),
           for (final r in rows)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(children: [
-                SizedBox(width: 140, child: Text(labels[r.key] ?? r.key, overflow: TextOverflow.ellipsis)),
-                Expanded(
-                  child: LayoutBuilder(builder: (context, c) {
-                    final w = c.maxWidth * r.value.$1 / max;
-                    final wa = r.value.$1 == 0 ? 0.0 : w * r.value.$2 / r.value.$1;
-                    return Stack(children: [
-                      Container(height: 18, width: w, decoration: BoxDecoration(color: scheme.primary.withValues(alpha: 0.25), borderRadius: BorderRadius.circular(6))),
-                      Container(height: 18, width: wa, decoration: BoxDecoration(color: AppTheme.human, borderRadius: BorderRadius.circular(6))),
-                    ]);
-                  }),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 92,
+              padding: const EdgeInsets.only(bottom: 14),
+              child: LayoutBuilder(builder: (context, c) {
+                final narrow = c.maxWidth < 520;
+                final label = SizedBox(
+                  width: narrow ? c.maxWidth : 150,
+                  child: Text(labels[r.key] ?? r.key,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                );
+                final pct = r.value.$1 == 0 ? 0 : (r.value.$2 * 100 / r.value.$1).round();
+                final bar = _Bar(total: r.value.$1, admitted: r.value.$2, max: max);
+                final value = SizedBox(
+                  width: 104,
                   child: Text(
-                    '${r.value.$1} · ${r.value.$2} adm (${r.value.$1 == 0 ? 0 : (r.value.$2 * 100 / r.value.$1).round()}%)',
-                    style: const TextStyle(fontSize: 12),
-                    textAlign: TextAlign.right,
+                    '${r.value.$1} · ${r.value.$2} adm ($pct%)',
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 11.5, color: context.scheme.onSurfaceVariant),
                   ),
-                ),
-              ]),
+                );
+                if (narrow) {
+                  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(child: label),
+                      value,
+                    ]),
+                    const SizedBox(height: 6),
+                    bar,
+                  ]);
+                }
+                return Row(children: [label, Expanded(child: bar), const SizedBox(width: 10), value]);
+              }),
             ),
-        ]),
+        ],
       ),
     );
   }
+}
+
+class _Bar extends StatelessWidget {
+  const _Bar({required this.total, required this.admitted, required this.max});
+  final int total;
+  final int admitted;
+  final int max;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, c) {
+      final w = c.maxWidth * total / (max == 0 ? 1 : max);
+      final wa = total == 0 ? 0.0 : w * admitted / total;
+      return SizedBox(
+        height: 20,
+        child: Stack(children: [
+          Container(
+            height: 20,
+            width: w,
+            decoration: BoxDecoration(
+              color: AppTheme.indigo.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(7),
+            ),
+          ),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOutCubic,
+            height: 20,
+            width: wa,
+            decoration: BoxDecoration(
+              color: AppTheme.human,
+              borderRadius: BorderRadius.circular(7),
+            ),
+          ),
+        ]),
+      );
+    });
+  }
+}
+
+class _Legend extends StatelessWidget {
+  const _Legend({required this.color, required this.label});
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
+        ),
+        const SizedBox(width: 6),
+        Text(label, style: context.texts.bodySmall?.copyWith(fontSize: 11.5)),
+      ]);
 }

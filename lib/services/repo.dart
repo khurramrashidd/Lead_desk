@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 /// All Firestore reads and writes in one place.
 class Repo {
@@ -39,14 +40,17 @@ class Repo {
     Map<String, dynamic> extra = const {},
   }) async {
     final ref = leads.doc();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
     await ref.set({
+      // Firestore rules: a student can read only leads that list their uid here.
+      if (uid != null) 'viewerUids': [uid],
       if (name != null && name.isNotEmpty) 'name': name,
       if (phone != null && phone.isNotEmpty) 'phone': phone,
       if (email != null && email.isNotEmpty) 'email': email,
       if (city != null && city.isNotEmpty) 'city': city,
-      if (lat != null) 'lat': lat,
-      if (lng != null) 'lng': lng,
-      if (assignedTo != null) 'assignedTo': assignedTo,
+      'lat': ?lat,
+      'lng': ?lng,
+      'assignedTo': ?assignedTo,
       'sources': [source],
       'firstSource': source,
       'lastChannel': source == 'whatsapp' ? 'whatsapp' : 'web',
@@ -75,9 +79,9 @@ class Repo {
     await messages(leadId).add({
       'role': 'user',
       'channel': channel,
-      if (text != null) 'text': text,
-      if (audioB64 != null) 'audioB64': audioB64,
-      if (audioMime != null) 'audioMime': audioMime,
+      'text': ?text,
+      'audioB64': ?audioB64,
+      'audioMime': ?audioMime,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }

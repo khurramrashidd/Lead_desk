@@ -31,11 +31,14 @@ export async function mergeLeads(keepId: string, dupId: string, reason: string, 
   if (dup.name && dup.name !== keep.name) aliases.add(dup.name);
   const sources = Array.from(new Set([...(keep.sources ?? []), ...(dup.sources ?? [])]));
   const objections = Array.from(new Set([...(keep.objections ?? []), ...(dup.objections ?? [])]));
+  // The student's chat follows the merge, so they must be able to read the kept lead.
+  const viewerUids = Array.from(new Set([...(keep.viewerUids ?? []), ...(dup.viewerUids ?? [])]));
 
   const patch: Record<string, unknown> = {
     aliases: Array.from(aliases),
     sources,
     objections,
+    viewerUids,
     mergedFromIds: FieldValue.arrayUnion(dupId),
   };
   if (!keep.name && dup.name) patch.name = dup.name;

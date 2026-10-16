@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "535675399389-a8s2lp4l67ok5tsj589pt7aiv06uk005.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.techsummit.lead_desk",
+            "certificate_hash": "2819f376454e6dcd964aa72bc5febb337e64ec8f"
+          }
+        },
+        {
           "client_id": "535675399389-3nbmpllo7m2thboncken3d6n7quh1n7k.apps.googleusercontent.com",
           "client_type": 3
         }

@@ -1,9 +1,10 @@
 import 'dart:convert';
 
-import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+
+import 'audio_bytes.dart';
 
 /// A recorded voice note, ready to send.
 class VoiceNote {
@@ -64,7 +65,7 @@ class VoiceRecorder {
     final path = await _rec.stop();
     _startedAt = null;
     if (path == null || secs < 1) return null;
-    final bytes = await XFile(path).readAsBytes();
+    final bytes = await readRecordedAudio(path);
     if (bytes.length > 700 * 1024) return null; // Firestore documents must stay under 1 MB
     return VoiceNote(base64Encode(bytes), _mime, secs);
   }

@@ -1,13 +1,56 @@
-# Secrets
-functions/.env
+# ---------- Secrets (never commit) ----------
+.env
+**/.env
+functions/.env.*
+!functions/.env.example
+*.pem
+service-account*.json
+*.keystore
+*.jks
+key.properties
 
-# Node
+# ---------- Firebase / Node ----------
 functions/node_modules/
 functions/lib/
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
 
-# Flutter
+# ---------- Flutter / Dart ----------
+**/doc/api/
+**/ios/Flutter/.last_build_id
 .dart_tool/
-build/
 .flutter-plugins
 .flutter-plugins-dependencies
-.README.md
+.pub-cache/
+.pub/
+/build/
+/coverage/
+app.*.symbols
+app.*.map.json
+
+# ---------- Android build output ----------
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# ---------- Downloaded update zips / local builds ----------
+*.zip
+*.apk
+*.aab
+
+# ---------- IDE / OS ----------
+*.iml
+*.ipr
+*.iws
+.idea/
+.DS_Store
+*.log
+*.swp
+.history
+migrate_working_dir/
+Thumbs.db
+desktop.ini
+.kotlin/
+android/.kotlin/

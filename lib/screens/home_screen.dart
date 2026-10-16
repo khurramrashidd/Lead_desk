@@ -1,8 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../main.dart';
+import '../services/auth_service.dart';
 import '../utils/ist.dart';
 import '../utils/responsive.dart';
+import 'auth/account_sheet.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -21,7 +24,37 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('AI Lead Desk'),
         actions: [
-          const Center(child: IstClock()),
+          Center(child: IstClock(compact: MediaQuery.sizeOf(context).width < 600)),
+          // Staff account: avatar when signed in, otherwise a sign-in shortcut.
+          StreamBuilder<User?>(
+            stream: FirebaseAuth.instance.userChanges(),
+            builder: (context, snap) {
+              final u = snap.data;
+              if (u == null || u.isAnonymous) {
+                if (MediaQuery.sizeOf(context).width < 600) {
+                  return IconButton(
+                    tooltip: 'Staff sign in',
+                    icon: const Icon(Icons.login),
+                    onPressed: () => Navigator.pushNamed(context, '/desk'),
+                  );
+                }
+                return TextButton.icon(
+                  icon: const Icon(Icons.login, size: 18),
+                  label: const Text('Staff sign in'),
+                  onPressed: () => Navigator.pushNamed(context, '/desk'),
+                );
+              }
+              return IconButton(
+                tooltip: AuthService.displayName,
+                onPressed: () => showAccountSheet(context),
+                icon: CircleAvatar(
+                  radius: 15,
+                  backgroundImage: u.photoURL != null ? NetworkImage(u.photoURL!) : null,
+                  child: u.photoURL == null ? Text(AuthService.displayName[0].toUpperCase()) : null,
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Light / dark',
             icon: const Icon(Icons.brightness_6),

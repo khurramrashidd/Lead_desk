@@ -9,8 +9,14 @@ import { formatIst, googleCalendarUrl, respectQuietHours, t } from "./lang";
 import { resolveIdentity } from "./merge";
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+/** Tried in order: if a model name is wrong or its free quota is used up, the next one answers. */
+const MODELS = Array.from(
+  new Set([MODEL, process.env.GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite"].map((m) => m.trim()).filter(Boolean)),
+);
+let lastModelUsed = MODEL;
 let ai: GoogleGenAI | null = null;
 function client(): GoogleGenAI {
+  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is missing: put it in functions/.env and redeploy");
   if (!ai) ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   return ai;
 }
@@ -208,17 +214,24 @@ function toContents(history: Message[]): Content[] {
 
 async function generate(system: string, contents: Content[]): Promise<BrainOut> {
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await client().models.generateContent({
-        model: MODEL,
-        contents,
-        config: { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: RESPONSE_SCHEMA },
-      });
-      return JSON.parse(res.text ?? "{}") as BrainOut;
-    } catch (e) {
-      lastErr = e;
-      await new Promise((r) => setTimeout(r, 1500));
+  // Each model gets one retry (busy / rate limited), then we move to the fallback model.
+  for (const model of MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await client().models.generateContent({
+          model,
+          contents,
+          config: { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: RESPONSE_SCHEMA },
+        });
+        lastModelUsed = model;
+        return JSON.parse(res.text ?? "{}") as BrainOut;
+      } catch (e) {
+        lastErr = e;
+        const msg = String((e as Error)?.message ?? e);
+        console.warn(`Gemini ${model} attempt ${attempt + 1} failed: ${msg.slice(0, 300)}`);
+        if (/not.?found|404|invalid.*model|API key/i.test(msg)) break; // retrying the same model won't help
+        await new Promise((r) => setTimeout(r, 1200));
+      }
     }
   }
   throw lastErr;
@@ -332,7 +345,7 @@ export async function counsel(leadId: string, messageId: string): Promise<BrainR
     meta: {
       kbRefs: out.kb_refs ?? [],
       guard: blockedDraft ? { blocked: true, draft: blockedDraft } : { blocked: false },
-      model: MODEL,
+      model: lastModelUsed,
     },
   });
 

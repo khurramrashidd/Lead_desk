@@ -8,6 +8,7 @@ import '../../widgets/lead_widgets.dart';
 
 enum LeadFilter { all, hot, needsHuman, followUpDue, demoBooked }
 
+/// The live queue of enquiries. Newest activity first, merged duplicates hidden.
 class LeadList extends StatefulWidget {
   const LeadList({super.key, required this.selectedId, required this.onSelect});
   final String? selectedId;
@@ -18,14 +19,25 @@ class LeadList extends StatefulWidget {
 }
 
 class _LeadListState extends State<LeadList> {
+  final _stream = Repo.watchLeads();
+  final _search = TextEditingController();
   LeadFilter _filter = LeadFilter.all;
   String _query = '';
-  final _stream = Repo.watchLeads(); // one live subscription, reused on every rebuild
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   bool _matches(Map<String, dynamic> d) {
-    final q = _query.toLowerCase();
+    final q = _query.trim().toLowerCase();
     if (q.isNotEmpty) {
-      final hay = '${d['name'] ?? ''} ${d['nameLatin'] ?? ''} ${d['phone'] ?? ''} ${d['city'] ?? ''}'.toLowerCase();
+      final hay = [
+        d['name'], d['nameLatin'], d['phone'], d['city'],
+        ...((d['aliases'] as List?)?.cast<String>() ?? const <String>[]),
+        ...((d['summary'] as List?)?.cast<String>() ?? const <String>[]),
+      ].whereType<String>().join(' ').toLowerCase();
       if (!hay.contains(q)) return false;
     }
     switch (_filter) {
@@ -38,69 +50,93 @@ class _LeadListState extends State<LeadList> {
       case LeadFilter.followUpDue:
         final na = d['nextAction'] as Map?;
         final at = Ist.fromTimestamp(na?['at']);
-        return na != null && na['done'] != true && at != null && at.isBefore(DateTime.now().add(const Duration(hours: 24)));
+        return na != null &&
+            na['done'] != true &&
+            at != null &&
+            at.isBefore(DateTime.now().add(const Duration(hours: 24)));
       case LeadFilter.demoBooked:
-        return d['status'] == 'demo_booked';
+        return d['status'] == 'demo_booked' || d['booking'] != null;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-          child: TextField(
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search name, phone, city'),
-            onChanged: (v) => setState(() => _query = v),
+    return Container(
+      color: context.scheme.surface,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            child: TextField(
+              controller: _search,
+              onChanged: (v) => setState(() => _query = v),
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                hintText: 'Search name, phone, city…',
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () {
+                          _search.clear();
+                          setState(() => _query = '');
+                        },
+                      ),
+              ),
+            ),
           ),
-        ),
-        SizedBox(
-          height: 44,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            children: [
-              for (final f in LeadFilter.values)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(_label(f)),
-                    selected: _filter == f,
-                    onSelected: (_) => setState(() => _filter = f),
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              children: [
+                for (final f in LeadFilter.values)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 7),
+                    child: _FilterChip(
+                      label: _label(f),
+                      selected: _filter == f,
+                      onTap: () => setState(() => _filter = f),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-        Expanded(
-          child: StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
-            stream: _stream,
-            builder: (context, snap) {
-              if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
-              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-              final docs = snap.data!.where((d) => _matches(d.data())).toList();
-              if (docs.isEmpty) {
-                return Center(
-                  child: Text('No leads here yet.\nOpen Admin → Load demo data, or chat as a student.',
-                      textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 6),
+          Expanded(
+            child: StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+              stream: _stream,
+              builder: (context, snap) {
+                if (snap.hasError) return _Message(icon: Icons.error_outline, text: 'Could not load leads.\n${snap.error}');
+                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                final docs = snap.data!.where((d) => _matches(d.data())).toList();
+                if (docs.isEmpty) {
+                  return _Message(
+                    icon: Icons.inbox_outlined,
+                    text: _query.isNotEmpty || _filter != LeadFilter.all
+                        ? 'No leads match this filter.'
+                        : 'No enquiries yet.\nOpen Admin → Load demo data, or chat as a student.',
+                  );
+                }
+                return ListView.separated(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  itemCount: docs.length,
+                  separatorBuilder: (context, index) =>
+                      Divider(height: 1, indent: 76, color: context.scheme.outlineVariant),
+                  itemBuilder: (context, i) => _LeadTile(
+                    id: docs[i].id,
+                    d: docs[i].data(),
+                    selected: docs[i].id == widget.selectedId,
+                    onTap: () => widget.onSelect(docs[i].id),
+                  ),
                 );
-              }
-              return ListView.separated(
-                itemCount: docs.length,
-                separatorBuilder: (context, index) => const Divider(height: 1, indent: 72),
-                itemBuilder: (context, i) => _LeadTile(
-                  id: docs[i].id,
-                  d: docs[i].data(),
-                  selected: docs[i].id == widget.selectedId,
-                  onTap: () => widget.onSelect(docs[i].id),
-                ),
-              );
-            },
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -108,9 +144,37 @@ class _LeadListState extends State<LeadList> {
         LeadFilter.all => 'All',
         LeadFilter.hot => '🔥 Hot',
         LeadFilter.needsHuman => '🙋 Needs you',
-        LeadFilter.followUpDue => '⏰ Follow-up due',
-        LeadFilter.demoBooked => '📅 Demo booked',
+        LeadFilter.followUpDue => '⏰ Due',
+        LeadFilter.demoBooked => '📅 Demo',
       };
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({required this.label, required this.selected, required this.onTap});
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: selected ? AppTheme.indigo : context.scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : context.scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 class _LeadTile extends StatelessWidget {
@@ -122,66 +186,119 @@ class _LeadTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final name = (d['name'] as String?)?.isNotEmpty == true ? d['name'] as String : 'New enquiry';
+    final scheme = context.scheme;
+    final name = (d['name'] as String?)?.trim().isNotEmpty == true ? d['name'] as String : 'New enquiry';
     final latin = d['nameLatin'] as String?;
     final sources = (d['sources'] as List?)?.cast<String>() ?? const <String>[];
     final objections = (d['objections'] as List?)?.cast<String>() ?? const <String>[];
     final summary = (d['summary'] as List?)?.cast<String>() ?? const <String>[];
-    final needsHuman = d['needsHuman'] == true;
     final aliases = (d['aliases'] as List?)?.cast<String>() ?? const <String>[];
+    final needsHuman = d['needsHuman'] == true;
+    final temp = d['temperature'] as String?;
 
     return Material(
-      color: selected ? scheme.primaryContainer.withValues(alpha: 0.45) : Colors.transparent,
+      color: selected ? AppTheme.indigo.withValues(alpha: 0.08) : Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ScoreBadge(score: (d['score'] as num?)?.toInt() ?? 0, temperature: d['temperature'] as String?),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Flexible(
-                    child: Text(
-                      latin != null && latin != name ? '$name · $latin' : name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+        child: Stack(
+          children: [
+            if (selected)
+              Positioned(
+                left: 0,
+                top: 8,
+                bottom: 8,
+                child: Container(
+                  width: 3,
+                  decoration: BoxDecoration(
+                    color: AppTheme.indigo,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ScoreBadge(score: (d['score'] as num?)?.toInt() ?? 0, temperature: temp),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                latin != null && latin.isNotEmpty && latin != name ? '$name · $latin' : name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5, letterSpacing: -0.2),
+                              ),
+                            ),
+                            if (needsHuman) ...[
+                              const SizedBox(width: 6),
+                              const Icon(Icons.pan_tool_rounded, size: 13, color: AppTheme.warm),
+                            ],
+                            if (d['aiPaused'] == true) ...[
+                              const SizedBox(width: 5),
+                              const Icon(Icons.headset_mic_rounded, size: 13, color: AppTheme.human),
+                            ],
+                            const Spacer(),
+                            Text(
+                              Ist.relative(Ist.fromTimestamp(d['lastMessageAt'])),
+                              style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          summary.isNotEmpty
+                              ? summary.first
+                              : sources.map((s) => sourceLabels[s] ?? s).join(' · '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5, height: 1.4),
+                        ),
+                        const SizedBox(height: 7),
+                        Wrap(spacing: 5, runSpacing: 5, children: [
+                          TempChip(temp),
+                          for (final s in sources.take(2)) SmallChip(sourceLabels[s] ?? s),
+                          if (aliases.isNotEmpty) const SmallChip('🔗 merged', color: AppTheme.ai),
+                          for (final o in objections.take(2)) SmallChip(objectionLabels[o] ?? o, color: AppTheme.warm),
+                        ]),
+                      ],
                     ),
                   ),
-                  if (needsHuman) ...[
-                    const SizedBox(width: 6),
-                    const Icon(Icons.priority_high, size: 16, color: AppTheme.hot),
-                  ],
-                  if (d['aiPaused'] == true) ...[
-                    const SizedBox(width: 4),
-                    const Icon(Icons.headset_mic, size: 16, color: AppTheme.human),
-                  ],
-                ]),
-                const SizedBox(height: 2),
-                Text(
-                  summary.isNotEmpty ? summary.first : (sources.map((s) => sourceLabels[s] ?? s).join(' · ')),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
-                ),
-                const SizedBox(height: 4),
-                Wrap(spacing: 4, runSpacing: 4, children: [
-                  TempChip(d['temperature'] as String?),
-                  for (final s in sources.take(3)) SmallChip(sourceLabels[s] ?? s),
-                  if (aliases.isNotEmpty) const SmallChip('🔗 merged', color: AppTheme.ai),
-                  for (final o in objections.take(2)) SmallChip(objectionLabels[o] ?? o, color: AppTheme.warm),
-                ]),
-              ]),
+                ],
+              ),
             ),
-            const SizedBox(width: 8),
-            Text(Ist.relative(Ist.fromTimestamp(d['lastMessageAt'])),
-                style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-          ]),
+          ],
         ),
       ),
     );
   }
+}
+
+class _Message extends StatelessWidget {
+  const _Message({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 38, color: context.scheme.onSurfaceVariant.withValues(alpha: 0.5)),
+              const SizedBox(height: 14),
+              Text(text,
+                  textAlign: TextAlign.center,
+                  style: context.texts.bodyMedium?.copyWith(fontSize: 13.5, height: 1.5)),
+            ],
+          ),
+        ),
+      );
 }

@@ -47,6 +47,7 @@ export interface Lead {
   name?: string;
   nameLatin?: string;
   aliases?: string[];
+  viewerUids?: string[];
   phone?: string;
   email?: string;
   sources?: Channel[];

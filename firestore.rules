@@ -1,11 +1,58 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // HACKATHON RULES: any signed-in user (the app signs everyone in anonymously).
-    // Before real use: separate counsellor logins with roles, and let prospects
-    // read/write only their own lead.
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    // ---------- Who is asking? ----------
+    function signedIn() { return request.auth != null; }
+    // Students chat with an anonymous session; staff sign in with Google or email.
+    function isStaffLogin() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    function hasRecord() { return exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function myRole() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role; }
+    function isCounsellor() { return isStaffLogin() && hasRecord() && myRole() in ['counsellor', 'admin']; }
+    function isAdmin() { return isStaffLogin() && hasRecord() && myRole() == 'admin'; }
+    // Project owner(s): can unlock admin for themselves if the automatic promotion never ran.
+    // Keep this list the same as kOwnerEmails in lib/config.dart.
+    function ownerEmails() { return ['khurramrashid0786@gmail.com']; }
+    function isOwnerEmail() {
+      return isStaffLogin() && request.auth.token.email != null
+             && request.auth.token.email.lower() in ownerEmails();
     }
+    // A student may only see the enquiry they started (or one it was merged into).
+    function isViewer(lead) { return signedIn() && request.auth.uid in lead.get('viewerUids', []); }
+    function leadData(leadId) { return get(/databases/$(database)/documents/leads/$(leadId)).data; }
+
+    // ---------- Staff accounts & roles ----------
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // New staff can only ask for access ("pending"); they can never make themselves admin.
+      allow create: if isStaffLogin() && request.auth.uid == uid && request.resource.data.role == 'pending';
+      // Own profile updates may not change the role. Only admins change roles —
+      // except a listed owner, who may unlock admin for their own account.
+      allow update: if isAdmin()
+                    || (request.auth.uid == uid && isOwnerEmail() && request.resource.data.role == 'admin')
+                    || (request.auth.uid == uid && request.resource.data.role == resource.data.role);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Leads & conversations ----------
+    match /leads/{leadId} {
+      allow read: if isCounsellor() || isViewer(resource.data);
+      allow create: if isCounsellor() || isViewer(request.resource.data);
+      allow update: if isCounsellor() || isViewer(resource.data);
+      allow delete: if isAdmin();
+
+      match /messages/{msgId} {
+        allow read: if isCounsellor() || isViewer(leadData(leadId));
+        // Students can only add their own messages; AI replies are written by Cloud Functions.
+        allow create: if isCounsellor() || (isViewer(leadData(leadId)) && request.resource.data.role == 'user');
+        allow update, delete: if isCounsellor();
+      }
+    }
+
+    // ---------- Institute data ----------
+    match /kb/{doc}     { allow read: if signedIn();     allow write: if isAdmin(); }
+    match /slots/{doc}  { allow read: if signedIn();     allow write: if isAdmin(); }
+    match /config/{doc} { allow read, write: if isCounsellor(); }
+    match /events/{doc} { allow read: if isCounsellor(); allow write: if false; } // written by Cloud Functions only
   }
 }
