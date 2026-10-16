@@ -10,9 +10,16 @@ import '../../widgets/site_widgets.dart';
 // HERO
 // ============================================================================
 class HeroSection extends StatelessWidget {
+<<<<<<< HEAD
   const HeroSection({super.key, required this.onChat, required this.onForm});
   final VoidCallback onChat;
   final VoidCallback onForm;
+=======
+  const HeroSection({super.key, required this.onChat, required this.onForm, required this.onCall});
+  final VoidCallback onChat;
+  final VoidCallback onForm;
+  final VoidCallback onCall;
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +29,12 @@ class HeroSection extends StatelessWidget {
 
     return Section(
       gradient: AppTheme.heroGradient,
+<<<<<<< HEAD
       padTop: phone ? 36 : 72,
+=======
+      // the fixed header sits on top of this gradient, so leave room for it
+      padTop: navHeight(context) + (phone ? 28 : 52),
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
       padBottom: phone ? 48 : 88,
       child: Stack(
         children: [
@@ -106,6 +118,18 @@ class HeroSection extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 18),
               ),
             ),
+<<<<<<< HEAD
+=======
+            TextButton.icon(
+              onPressed: onCall,
+              icon: const Icon(Icons.call_outlined, size: 18),
+              label: const Text('Or get a callback'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              ),
+            ),
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
           ],
         ),
         const SizedBox(height: 36),
@@ -796,8 +820,14 @@ class StoriesSection extends StatelessWidget {
 // FAQ
 // ============================================================================
 class FaqSection extends StatelessWidget {
+<<<<<<< HEAD
   const FaqSection({super.key, required this.onChat});
   final VoidCallback onChat;
+=======
+  const FaqSection({super.key, required this.onChat, required this.onCall});
+  final VoidCallback onChat;
+  final VoidCallback onCall;
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
 
   @override
   Widget build(BuildContext context) {
@@ -842,11 +872,26 @@ class FaqSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
+<<<<<<< HEAD
           TextButton.icon(
             onPressed: onChat,
             icon: const Icon(Icons.auto_awesome, size: 17),
             label: const Text('Ask something else'),
           ),
+=======
+          Wrap(spacing: 10, runSpacing: 10, children: [
+            TextButton.icon(
+              onPressed: onChat,
+              icon: const Icon(Icons.auto_awesome, size: 17),
+              label: const Text('Ask something else'),
+            ),
+            TextButton.icon(
+              onPressed: onCall,
+              icon: const Icon(Icons.call_outlined, size: 17),
+              label: const Text('Talk to a human instead'),
+            ),
+          ]),
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
         ],
       ),
     );
@@ -857,9 +902,16 @@ class FaqSection extends StatelessWidget {
 // CLOSING CTA
 // ============================================================================
 class CtaSection extends StatelessWidget {
+<<<<<<< HEAD
   const CtaSection({super.key, required this.onChat, required this.onForm});
   final VoidCallback onChat;
   final VoidCallback onForm;
+=======
+  const CtaSection({super.key, required this.onChat, required this.onForm, required this.onCall});
+  final VoidCallback onChat;
+  final VoidCallback onForm;
+  final VoidCallback onCall;
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
 
   @override
   Widget build(BuildContext context) {
@@ -910,6 +962,18 @@ class CtaSection extends StatelessWidget {
                   side: BorderSide(color: Colors.white.withValues(alpha: 0.45)),
                 ),
               ),
+<<<<<<< HEAD
+=======
+              OutlinedButton.icon(
+                onPressed: onCall,
+                icon: const Icon(Icons.videocam_outlined, size: 19),
+                label: const Text('Book a call or video meeting'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.45)),
+                ),
+              ),
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
             ]),
           ],
         ),

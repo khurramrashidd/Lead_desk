@@ -50,7 +50,11 @@ class DemoHubScreen extends StatelessWidget {
     (
       Icons.admin_panel_settings_rounded,
       'Admin console',
+<<<<<<< HEAD
       'Approve counsellors, edit the knowledge base, load demo data, print QR codes.',
+=======
+      'AI keys and models, every channel, the knowledge base, demo data and QR codes.',
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
       '/admin',
       AppTheme.amberDeep,
     ),
@@ -63,6 +67,11 @@ class DemoHubScreen extends StatelessWidget {
     ('4', 'One person, one timeline', 'Submit the form as "Rahul Patil", then chat as "राहुल पाटील" — the two merge.'),
     ('5', 'Take over', 'Tap Take over on the phone. Asha stops instantly and your reply lands in the judge\'s chat.'),
     ('6', 'No lead forgotten', 'Hit ⏩ Fast-forward 1 day — reminders and follow-ups fire with their reasons.'),
+<<<<<<< HEAD
+=======
+    ('7', 'One admission, three people', 'A father enquires by phone, the student walks in, a friend messages on Telegram — still one lead, with every contact listed.'),
+    ('8', 'When counselling is not enough', 'Ask for a human: Asha takes name, phone, email and a one-line brief, then books a real call or video meeting slot.'),
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
   ];
 
   @override
@@ -165,6 +174,29 @@ class DemoHubScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 28),
                   SurfaceCard(
+<<<<<<< HEAD
+=======
+                    accent: AppTheme.indigo,
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const IconBadge(icon: Icons.fact_check_outlined, color: AppTheme.indigo, size: 40),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('Every line of the problem statement',
+                              style: context.texts.titleSmall?.copyWith(fontSize: 14.5)),
+                          const SizedBox(height: 5),
+                          Text(
+                            'docs/PROBLEM_STATEMENT_COVERAGE.md maps all 36 requirements to the file that implements '
+                            'them, and says plainly which two are partial and which one is not built.',
+                            style: context.texts.bodyMedium?.copyWith(fontSize: 13.2),
+                          ),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 16),
+                  SurfaceCard(
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
                     accent: AppTheme.warm,
                     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       const IconBadge(icon: Icons.info_outline_rounded, color: AppTheme.warm, size: 40),
@@ -175,8 +207,14 @@ class DemoHubScreen extends StatelessWidget {
                           const SizedBox(height: 5),
                           Text(
                             'SechTummit Trainers is a stand-in brand for the demo. Courses, fees, partner names and student '
+<<<<<<< HEAD
                             'stories on the website are sample content, editable in Admin. Telephony and Instagram DMs — '
                             'the optional parts of the statement — are not built; Instagram leads are tracked with a tagged link.',
+=======
+                            'stories are sample content, editable in Admin. Outbound telephony is not built — a counsellor '
+                            'logs the call instead. Instagram DMs need Meta approval; until then the bio link measures the '
+                            'source and DMs are logged on the desk.',
+>>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
                             style: context.texts.bodyMedium?.copyWith(fontSize: 13.2),
                           ),
                         ]),
