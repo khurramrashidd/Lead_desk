@@ -495,6 +495,15 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
     { picked: out.aptitude?.picked, shownId: out.aptitude?.shown_id, event: out.aptitude?.event, userText: msg.text },
     { ...(lead.profile ?? {}), ...(out.profile ?? {}) },
   );
+  // The prompt told the model exactly which question to ask next (NEXT_IF_CORRECT / NEXT_IF_WRONG /
+  // FIRST_QUESTION). If it forgot to report shown_id, the server still knows what is on screen.
+  if (apt.state.status !== "done" && apt.state.status !== "skipped" && !byId(out.aptitude?.shown_id)) {
+    const p = plan(lead.aptitude, lead.profile);
+    const expected = apt.scored ? (apt.scored.correct ? p.nextIfCorrect : p.nextIfWrong) : !apt.state.current && (out.aptitude?.event === "started") ? p.first : undefined;
+    if (expected && !apt.state.answers.some((x) => x.id === expected.id)) {
+      apt.state = { ...apt.state, status: "in_progress", current: expected.id, asked: apt.state.asked.includes(expected.id) ? apt.state.asked : [...apt.state.asked, expected.id] };
+    }
+  }
   if (apt.scored) await logEvent("aptitude_answer", leadId, { ...apt.scored, level: byId(apt.scored.id)?.level });
   if (apt.state.status === "done" && lead.aptitude?.status !== "done") await logEvent("aptitude_done", leadId, { result: apt.state.result, band: apt.state.band });
   const shownQuestion = apt.state.current && apt.state.current !== lead.aptitude?.current ? byId(apt.state.current) : undefined;

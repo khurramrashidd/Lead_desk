@@ -61,6 +61,8 @@ service cloud.firestore {
     }
     match /events/{doc} { allow read: if isCounsellor(); allow write: if false; } // written by Cloud Functions only
     match /stats/{doc}  { allow read: if isCounsellor(); allow write: if false; } // sharded counters, Cloud Functions only
+    // PS3 self-test runs: an admin queues one, a Cloud Function runs it and writes the proof.
+    match /selftests/{doc} { allow read: if isCounsellor(); allow create, update: if isAdmin(); allow delete: if false; }
     // aiCache/* has no rule on purpose: only Cloud Functions read and write the answer cache.
     match /alerts/{doc} {
       allow read: if isCounsellor();

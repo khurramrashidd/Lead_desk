@@ -25,7 +25,11 @@ deploy hosting
 ```
 Open **https://lead-desk-39885.web.app** on the phone → chat with Asha → mic works (HTTPS) → browser menu **Add to Home screen** (installs like an app).
 
-## C. Test script (two screens: desk on the laptop, chat on the phone)
+## C. Automatic proof (recommended first)
+Laptop: Desk → Admin → Demo → **Open the self-test** → **Run all, one by one** (8–12 min) → **Copy report**.
+Every sentence of the problem statement is tested live with evidence. Details: docs/PROOF.md.
+
+## D. Manual test script (two screens: desk on the laptop, chat on the phone)
 
 | # | Do this | Expect |
 |---|---|---|
@@ -39,6 +43,6 @@ Open **https://lead-desk-39885.web.app** on the phone → chat with Asha → mic
 | 8 | Laptop: Desk → 🧪 **Simulate** presets **1 → 5** | Rahul + father + friend = **one** lead with 3 contacts; father's daughter Priya = a **second, linked** lead |
 | 9 | 🧪 preset **6** twice | Second answer labelled **⚡ instant: same question answered before** |
 | 10 | Admin → Demo → **Load test: 30 at once** → Desk → Reports | 30 leads answered; **Scale & cost** shows about 3 AI calls instead of 30 |
-| 11 | Desk → ⏩ **+1 day** | Reminders and objection-based follow-ups fire, each with its reason |
+| 11 | Desk → ⏩ **Jump to tomorrow 11 AM** | Reminders and objection-based follow-ups fire, each with its reason |
 | 12 | Desk → Reports | Conversion by source, counsellor, objection |
 | 13 | Send 3 quick messages in a row from the phone | One reply covering all three (desk: "answered 3 messages together") |

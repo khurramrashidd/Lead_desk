@@ -10,6 +10,7 @@ import 'screens/admin_screen.dart';
 import 'screens/auth/auth_gate.dart';
 import 'screens/chat/prospect_chat_screen.dart';
 import 'screens/demo_hub_screen.dart';
+import 'screens/selftest_screen.dart';
 import 'screens/form_screen.dart';
 import 'screens/site/site_screen.dart';
 import 'screens/walkin_screen.dart';
@@ -65,6 +66,8 @@ class LeadDeskApp extends StatelessWidget {
               page = const AuthGate(requireAdmin: true, child: AdminScreen());
             case '/demo':
               page = const DemoHubScreen();
+            case '/selftest':
+              page = const AuthGate(requireAdmin: true, child: SelfTestScreen());
             default:
               page = SiteScreen(source: src ?? 'web', openChat: uri.queryParameters['chat'] == '1');
           }

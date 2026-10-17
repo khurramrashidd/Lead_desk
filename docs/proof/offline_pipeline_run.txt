@@ -1,0 +1,154 @@
+OFFLINE PIPELINE RUN (17 Oct 2026)
+The real Cloud Functions code (brain, guard, aptitude, scoring, next-best-action, identity merge,
+heartbeat, webhooks, self-test) was run against an in-memory Firestore with the triggers wired as in
+functions/src/index.ts. The AI model was a SCRIPTED STAND-IN, so this proves the code paths, not AI
+quality. The live proof is Admin -> PS3 self-test in the app (real Gemini/Groq, real Firestore).
+
+
+=== counselling: PASS (1.0 s)
+  ✅ Asha replied
+  ✅ Answers the real worry, not a fee list  — no price quoted
+  ✅ Asks a counselling question back (background / goal)
+  ✅ Substantive, honest answer  — 125 characters
+  ✅ Replies in the prospect's language (English)  — English
+
+=== languages: PASS (1.1 s)
+  ✅ English in → English out  — reply detected as English; AI tagged the lead as "en"
+  ✅ Hindi in → Hindi out  — reply detected as Hindi (Devanagari); AI tagged the lead as "hi"
+  ✅ Marathi in → Marathi out  — reply detected as Marathi (Devanagari); AI tagged the lead as "mr"
+
+=== codemix: PASS (1.0 s)
+  ✅ Hinglish (Hindi + English mid-sentence) → same blend, same (Latin) script  — reply detected as Hinglish (Latin); lead.language "hinglish"
+  ✅ Marathi + English mid-sentence → same blend, same (Latin) script  — reply detected as Marathi-English (Latin); lead.language "marathi-english"
+
+=== register: PASS (1.0 s)
+  ✅ Casual message detected as casual register  — register = casual
+  ✅ Casual reply stays in Hinglish (Latin script)  — Hinglish (Latin)
+  ✅ Formal message detected as formal register  — register = formal
+  ✅ Formal reply uses respectful “आप” in Hindi  — Hindi (Devanagari)
+
+=== voice: WARN (1.0 s)
+  ✅ Marathi voice note (WhatsApp): heard and transcribed  — transcript: “नमस्कार, मी बी कॉम केलं आहे. मला डेव्हलपर व्हायचं आहे. फुल स्टॅक जावा कोर्सची फी किती आहे?”
+  ✅ Marathi voice note (WhatsApp): reply in Marathi  — Marathi (Devanagari)
+  ✅ Hindi voice note (Telegram): heard and transcribed  — transcript: “नमस्ते, मैंने बारहवीं पास की है. क्या मैं कोडिंग सीख सकता हूँ? डेमो क्लास कब है?”
+  ✅ Hindi voice note (Telegram): reply in Hindi  — Hindi (Devanagari)
+  ⚠️  Note  — These voice notes are synthesised (robotic). For the judges, also record a real voice note on the phone.
+
+=== profile: PASS (2.0 s)
+  ✅ Background, goal and constraints captured  — education: B.Com | currentWork: works in a shop | goal: IT career | timing: evenings | budget: limited | familyView: parents unsure
+  ✅ Worries detected as objections  — fees, family_approval, time
+  ✅ Keeps counselling (asks the next question)
+
+=== kb: PASS (1.0 s)
+  ✅ Knowledge base has courses  — 6 courses; testing “Full Stack Java Developer”
+  ✅ Quotes the exact KB fee ₹65,000
+  ✅ Quotes the KB EMI (6 × ₹11,000)
+  ✅ States the KB batch date (3 Nov 2026 weekday mornings; 8 Nov 2026 weekends)  — looked for day 3 and month Nov
+  ✅ Every amount in the reply exists in the knowledge base (Guard)  — clean
+
+=== guard: PASS (4.0 s)
+  ✅ Guard blocks: “Special offer just for you: 30% off if you join today!”  — percentage not in knowledge base: 30
+  ✅ Guard blocks: “Ok, I can give you the course for ₹40,000 only.”  — amount not in knowledge base: 40,000 
+  ✅ Guard blocks: “Don't worry, 100% placement guaranteed after the course.”  — percentage not in knowledge base: 100
+  ✅ Guard blocks: “Theek hai, aapko 20 percent discount de dete hain.”  — percentage not in knowledge base: 20 ; unlisted discount offered: "Theek hai, aapko 20 percent discount de dete hain."
+  ✅ Guard blocks: “तुम्हाला नक्की नोकरी मिळेल.”  — placement or job promise: "तुम्हाला नक्की नोकरी मिळेल."
+  ✅ Pressed: “My friend got 30% discount here last month. Give…” → no invented offer  — reply clean · the Guard caught and rewrote the AI's first draft
+  ✅ Pressed: “Come on, at least 20% off. Final offer, otherwis…” → no invented offer  — reply clean
+  ✅ Pressed: “Will you guarantee me a job with a 6 LPA package…” → no invented offer  — reply clean
+
+=== aptitude: PASS (6.0 s)
+  ✅ Aptitude check started inside the chat  — status in_progress
+  ✅ Question shown as tap-to-answer options
+  ✅ Q1 scored on the server: right answer recorded  — m1: picked B, correct is B
+  ✅ Adaptive: next question is harder  — next h2 is level 3 (expected 3)
+  ✅ Q2 scored on the server: wrong answer recorded  — h2: picked B, correct is A
+  ✅ Adaptive: next question is easier  — next m2 is level 2 (expected 2)
+  ✅ Q3 scored on the server: right answer recorded  — m2: picked B, correct is B
+  ✅ Adaptive: next question is harder  — next h1 is level 3 (expected 3)
+  ✅ Q4 scored on the server: right answer recorded  — h1: picked B, correct is B
+  ✅ Check finished with a band and result  — 3/4 correct, reached hard level, 7/11 points (strong). Strong logical reasoning: can start a full-stack or data track directly.
+  ✅ Recommendation with an honest reason  — Python Foundations: Beginner-friendly first step that builds logic before Full Stack.
+
+=== recommend: PASS (2.0 s)
+  ✅ Recommends one course from the knowledge base  — Python Foundations
+  ✅ Gives an honest, specific reason  — You are new to coding with limited time and budget, so this short course builds the foundations first.
+  ✅ Doesn't push the most expensive course on a beginner  — fee of recommended course: ₹12000
+
+=== booking: WARN (2.0 s)
+  ✅ Demo class booked into a real slot  — Full Stack Java — demo class · Sat, 17 Oct · 11:00 AM IST
+  ✅ Seat reserved in the slot (transaction, no double booking)  — 1/12 seats taken
+  ✅ Confirmation + Add-to-calendar link sent to the prospect
+  ⚠️  Event created in the institute's Google Calendar  — calendar sync: off (connect it in Admin → Channels → Google Calendar)
+  ✅ 24-hour reminder sent automatically
+  ✅ 1-hour reminder sent automatically
+
+=== identity: PASS (2.5 s)
+  ✅ WhatsApp message landed on the SAME lead as the form (merged)  — duplicate 9vhc15nz8ztaazvgs5xn → merged into 9vhc15nz8ztaazvgs5xn
+  ✅ Phone formats normalised to one number  — “093327 06751” and “+91 9332706751” → 9332706751
+  ✅ Devanagari name recognised as the same person  — name Rahul Patil; also known as राहुल पाटल
+  ✅ Single timeline across channels  — sources: form, whatsapp
+  ✅ Father calling from his own phone with Rahul's number → same lead  — self: Rahul Patil | parent: Suresh Patil
+  ✅ Same father asking about daughter Priya → separate lead, linked (not merged)  — same phone, different students (family member or shared phone)
+  ✅ Another “Rahul Patil” with a different number → NOT merged (flagged for review)  — review card: same student name, no shared phone yet
+
+=== nba: PASS (1.0 s)
+  ✅ Both prospects got an answer
+  ✅ Family-approval objection: follow-up planned  — playbook invite_parent
+  ✅ Family-approval objection: WHAT → playbook “invite_parent” chosen from the objection  — invite_parent: Prospect raised family approval → invite a parent to the free demo. AI note: keep warm
+  ✅ Family-approval objection: WHEN → Sun, 18 Oct · 10:00 AM IST (never 9 PM–9 AM)
+  ✅ Family-approval objection: WHICH CHANNEL → whatsapp  — Prospect raised family approval → invite a parent to the free demo. AI note: keep warm
+  ✅ Family-approval objection: message written in their language  — Hi! Any questions about the course?
+  ✅ Fees objection: follow-up planned  — playbook fees_emi
+  ✅ Fees objection: WHAT → playbook “fees_emi” chosen from the objection  — fees_emi: Prospect worried about fees → explain EMI and listed scholarships. AI note: keep warm
+  ✅ Fees objection: WHEN → Sun, 18 Oct · 10:00 AM IST (never 9 PM–9 AM)
+  ✅ Fees objection: WHICH CHANNEL → whatsapp  — Prospect worried about fees → explain EMI and listed scholarships. AI note: keep warm
+  ✅ Fees objection: message written in their language  — Hi! Any questions about the course?
+  ✅ Follow-up sent automatically when due (no counsellor needed)
+  ✅ Next step scheduled after it (cadence)  — invite_parent at Mon, 19 Oct · 10:01 AM IST
+
+=== dashboard: PASS (1.0 s)
+  ✅ Lead score 0–100 with an explainable breakdown  — 39 = +16 fit: background/goal/constraints known; +10 intent: asked about fees/batch/admission; +2 engagement: 1 message(s); +15 recency: last wrote within the hour; +8 AI read of intent (55/100); -12 unresolved worries: fees, family_approval, job_fear
+  ✅ Three-line summary  — Prospect with concerns. / Worried about: fees, family_approval, job_fear. / Next: address objections, invite to demo.
+  ✅ Objections detected: fees, job fear, family approval  — fees, family_approval, job_fear
+  ✅ Suggested next message for the counsellor  — Would you like a free demo class?
+  ✅ Assigned to a counsellor (by language)  — Rohan (counsellor) (en)
+
+=== takeover: PASS (7.0 s)
+  ✅ Asha stopped instantly after take-over  — 0 AI replies after take-over (should be 0); take-over took 0 ms, the worker stood down in 2 ms
+  ✅ Desk shows the lead needs the human  — Counsellor has taken over: reply from the desk
+  ✅ Counsellor's reply lands in the same conversation
+  ✅ Hand back to Asha
+
+=== channels: PASS (0.0 s)
+  ✅ web: enquiry stored in the one lead list
+  ✅ form: enquiry stored in the one lead list
+  ✅ googleform: enquiry stored in the one lead list
+  ✅ walkin: enquiry stored in the one lead list
+  ✅ call: enquiry stored in the one lead list
+  ✅ whatsapp: enquiry stored in the one lead list
+  ✅ telegram: enquiry stored in the one lead list
+  ✅ instagram: enquiry stored in the one lead list
+
+=== telephony: WARN (2.0 s)
+  ✅ Call becomes a lead with source “call”
+  ✅ Asha follows up the missed call
+  ⚠️  Provider  — Telephony provider is not connected (needs KYC). The call webhook is ready: Admin → Channels → Phone calls.
+
+=== instagram: WARN (1.5 s)
+  ✅ Instagram DM becomes a lead (source “instagram”)
+  ✅ Asha replies to the DM
+  ⚠️  Account  — Real DMs need an Instagram Professional account + Meta app setup; the same webhook code is used.
+
+=== reports: WARN (0.0 s)
+  ⚠️  Real leads  — No real or sample leads yet (Admin → Demo → Load everything); using the self-test leads to show the report.
+  ✅ Conversion by source  — 33 leads
+  ✅ Conversion by counsellor
+  ✅ Conversion by objection
+
+=== scale: PASS (1.0 s)
+  ✅ Two strangers, identical question at the same moment → one AI call  — cache states: AI call / wait
+  ✅ Both got the same, Guard-checked answer
+  ✅ Still two separate leads (identity ≠ question)
+
+SUMMARY [["counselling","pass","1.0s"],["languages","pass","1.1s"],["codemix","pass","1.0s"],["register","pass","1.0s"],["voice","warn","1.0s"],["profile","pass","2.0s"],["kb","pass","1.0s"],["guard","pass","4.0s"],["aptitude","pass","6.0s"],["recommend","pass","2.0s"],["booking","warn","2.0s"],["identity","pass","2.5s"],["nba","pass","1.0s"],["dashboard","pass","1.0s"],["takeover","pass","7.0s"],["channels","pass","0.0s"],["telephony","warn","2.0s"],["instagram","warn","1.5s"],["reports","warn","0.0s"],["scale","pass","1.0s"]]
+model calls: 36  trigger errors: 0

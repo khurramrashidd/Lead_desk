@@ -36,7 +36,11 @@ async function deliver(leadId: string, lead: Lead, text: string, kind: string, n
   return delivered;
 }
 
-export async function runHeartbeat(now: Date): Promise<{ reminders: number; followups: number; calls: number }> {
+/**
+ * [only]: limit the run to these leads (the self-test uses it to fast-forward ONE lead's clock
+ * without touching anybody else).
+ */
+export async function runHeartbeat(now: Date, only?: Set<string>): Promise<{ reminders: number; followups: number; calls: number }> {
   let reminders = 0;
   let followups = 0;
   let calls = 0;
@@ -49,6 +53,7 @@ export async function runHeartbeat(now: Date): Promise<{ reminders: number; foll
     .limit(100)
     .get();
   for (const d of soon.docs) {
+    if (only && !only.has(d.id)) continue;
     const lead = d.data() as Lead;
     const b = lead.booking;
     if (!b || lead.mergedInto) continue;
@@ -70,6 +75,7 @@ export async function runHeartbeat(now: Date): Promise<{ reminders: number; foll
   // ---- Next-best-action follow-ups that are due ----
   const due = await db.collection("leads").where("nextAction.at", "<=", Timestamp.fromDate(now)).limit(100).get();
   for (const d of due.docs) {
+    if (only && !only.has(d.id)) continue;
     const lead = d.data() as Lead;
     const na = lead.nextAction;
     if (!na || na.done || lead.mergedInto || lead.aiPaused) continue;
@@ -105,6 +111,7 @@ export async function runHeartbeat(now: Date): Promise<{ reminders: number; foll
     followups++;
   }
   // ---- Housekeeping: drop cached answers older than a day ----
+  if (only) return { reminders, followups, calls };
   try {
     const old = await db.collection("aiCache").where("at", "<", Timestamp.fromMillis(Date.now() - 24 * HOUR)).limit(300).get();
     if (!old.empty) {

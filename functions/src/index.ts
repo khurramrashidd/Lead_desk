@@ -172,6 +172,18 @@ export const callWebhook = onRequest({ cors: true }, async (req, res) => {
   res.json({ ok: true, ...r });
 });
 
+/**
+ * PS3 self-test: the app writes selftests/{scenario} with status "queued"; this runs that
+ * scenario against the live system and writes checks + evidence back (Admin → Self-test).
+ */
+export const onSelfTest = onDocumentWritten({ document: "selftests/{id}", timeoutSeconds: 540, memory: "512MiB" }, async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!after || after.status !== "queued" || before?.runToken === after.runToken) return;
+  const { runScenario } = await import("./selftest");
+  await runScenario(event.params.id);
+});
+
 /** App actions: admin checks, demo data, simulators, merge, assign, book, call-backs. */
 export const api = onRequest({ cors: true, timeoutSeconds: 300, memory: "512MiB", cpu: 1, concurrency: 80 }, async (req, res) => {
   const { handleApi } = await import("./api");

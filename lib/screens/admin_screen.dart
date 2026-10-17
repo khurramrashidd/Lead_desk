@@ -122,6 +122,22 @@ class _DemoTabState extends State<_DemoTab> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (_busy) const LinearProgressIndicator(minHeight: 3),
       _Block(
+        icon: Icons.fact_check_rounded,
+        color: AppTheme.success,
+        title: 'PS3 self-test (proof for the judges)',
+        help: 'Runs every sentence of the problem statement against the live system (real AI, real database) and shows '
+            'pass/fail checks with the actual conversation as evidence. Run one by one or all in order; copy the report.',
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            onPressed: () => Navigator.of(context).pushNamed('/selftest'),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.success),
+            icon: const Icon(Icons.fact_check_rounded, size: 18),
+            label: const Text('Open the self-test'),
+          ),
+        ),
+      ),
+      _Block(
         icon: Icons.dataset_rounded,
         color: AppTheme.ai,
         title: 'Demo data',
@@ -194,6 +210,7 @@ class _DemoTabState extends State<_DemoTab> {
               ]),
               const SizedBox(height: 12),
               Wrap(spacing: 10, runSpacing: 10, children: [
+                FilledButton(onPressed: () => Repo.jumpToTomorrowMorning(), child: const Text('Tomorrow 11 AM')),
                 FilledButton.tonal(onPressed: () => Repo.fastForward(hours: 3), child: const Text('+3 hours')),
                 FilledButton.tonal(onPressed: () => Repo.fastForward(hours: 24), child: const Text('+1 day')),
                 FilledButton.tonal(onPressed: () => Repo.fastForward(hours: 48), child: const Text('+2 days')),

@@ -397,14 +397,21 @@ class _TimeMachineButton extends StatelessWidget {
       icon: const Icon(Icons.fast_forward_rounded),
       onSelected: (h) async {
         final messenger = ScaffoldMessenger.of(context);
-        await Repo.fastForward(hours: h);
+        if (h == -1) {
+          await Repo.jumpToTomorrowMorning();
+        } else {
+          await Repo.fastForward(hours: h);
+        }
         messenger.showSnackBar(SnackBar(
           content: Text(h == 0
               ? 'Clock reset to real time.'
-              : '⏩ Jumped $h hours ahead — reminders and follow-ups are firing now.'),
+              : h == -1
+                  ? '⏩ Now tomorrow 11 AM: due reminders and follow-ups are firing.'
+                  : '⏩ Jumped $h hours ahead: reminders and follow-ups are firing now.'),
         ));
       },
       itemBuilder: (_) => const [
+        PopupMenuItem(value: -1, child: ListTile(leading: Icon(Icons.wb_sunny_outlined), title: Text('Jump to tomorrow 11 AM'), dense: true)),
         PopupMenuItem(value: 24, child: ListTile(leading: Icon(Icons.fast_forward), title: Text('Fast-forward 1 day'), dense: true)),
         PopupMenuItem(value: 48, child: ListTile(leading: Icon(Icons.fast_forward), title: Text('Fast-forward 2 days'), dense: true)),
         PopupMenuItem(value: 0, child: ListTile(leading: Icon(Icons.restore), title: Text('Reset to real time'), dense: true)),

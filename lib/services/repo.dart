@@ -264,5 +264,21 @@ class Repo {
     });
   }
 
+  /// Demo: jump the server clock to 11:00 AM IST on the next day, when follow-ups are allowed
+  /// (they never go out between 9 PM and 9 AM), so pressing it always shows them firing.
+  static Future<void> jumpToTomorrowMorning() async {
+    final ref = db.doc('config/demo');
+    await db.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      final current = (snap.data()?['clockOffsetMinutes'] as num?)?.toInt() ?? 0;
+      final demoNowUtc = DateTime.now().toUtc().add(Duration(minutes: current));
+      final ist = demoNowUtc.add(const Duration(hours: 5, minutes: 30));
+      final targetIst = DateTime.utc(ist.year, ist.month, ist.day + 1, 11);
+      final targetUtc = targetIst.subtract(const Duration(hours: 5, minutes: 30));
+      final offset = targetUtc.difference(DateTime.now().toUtc()).inMinutes;
+      tx.set(ref, {'clockOffsetMinutes': offset, 'runNowAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+    });
+  }
+
   static Stream<DocumentSnapshot<Map<String, dynamic>>> watchDemoConfig() => db.doc('config/demo').snapshots();
 }

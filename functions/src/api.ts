@@ -204,6 +204,17 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
         res.json({ ok: true, created: n, distinct: questions.length, ms: Date.now() - started });
         return;
       }
+      case "selftestCleanup": {
+        if (!isAdmin(w)) return deny();
+        const { cleanupSelfTest } = await import("./selftest");
+        const removed = await cleanupSelfTest();
+        const runs = await db.collection("selftests").get();
+        const batch = db.batch();
+        runs.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+        res.json({ ok: true, removed });
+        return;
+      }
       case "resetStats": {
         if (!isAdmin(w)) return deny();
         const shards = await db.collection("stats").get();

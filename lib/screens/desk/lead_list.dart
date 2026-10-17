@@ -270,7 +270,12 @@ class _LeadTile extends StatelessWidget {
                           for (final s in sources.take(2)) SmallChip(sourceLabels[s] ?? s),
                           if (aliases.isNotEmpty || d['mergedFromIds'] != null) const SmallChip('🔗 merged', color: AppTheme.ai),
                           if ((d['relatedLeads'] as Map?)?.isNotEmpty == true) const SmallChip('👪 linked', color: AppTheme.info),
-                          if (d['burst'] == true) const SmallChip('load test') else if (d['seed'] == true) const SmallChip('sample'),
+                          if (d['selftest'] == true)
+                            const SmallChip('self-test')
+                          else if (d['burst'] == true)
+                            const SmallChip('load test')
+                          else if (d['seed'] == true)
+                            const SmallChip('sample'),
                           if ((d['assignedTo'] as String?)?.isNotEmpty == true) SmallChip('👤 ${d['assignedTo']}'),
                           for (final o in objections.take(2)) SmallChip(objectionLabels[o] ?? o, color: AppTheme.warm),
                         ]),

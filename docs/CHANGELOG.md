@@ -2,6 +2,20 @@
 
 Newest first. Earlier history is in the git log.
 
+## 17 Oct 2026 (2) — PS3 self-test with proof; deploy.bat fix (backend changed: run `deploy`)
+
+- **Fixed:** `deploy` failed with "Could not read package.json" (npm on Windows ignores `--prefix` for
+  `install`). It now runs npm inside the functions folder.
+- **PS3 self-test** (Admin → Demo → Open the self-test, route `/selftest`): 20 live tests, one per
+  sentence of "What to Build". Each records pass/fail checks and the real conversation as evidence;
+  tests can be run one by one or all in order, and the Markdown report can be copied.
+  Backend: `functions/src/selftest.ts`, trigger `onSelfTest`.
+- **Aptitude is sturdier:** if the AI forgets to report which question it asked, the server
+  still knows (it told the AI which one to ask), so scoring never stalls.
+- **Time machine:** "Jump to tomorrow 11 AM" always shows follow-ups firing (they never go out 9 PM–9 AM).
+- The heartbeat can run for selected leads only (used by the self-test).
+- docs/PROOF.md, docs/proof/offline_pipeline_run.txt (all 20 tests on an in-memory database + scripted AI).
+
 ## 17 Oct 2026 — scale, same-question cache, family-aware identity (backend changed: run `deploy`)
 
 - **Answer cache + single-flight**: identical first questions from different strangers are answered by the

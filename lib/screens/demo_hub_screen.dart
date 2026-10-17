@@ -48,6 +48,13 @@ class DemoHubScreen extends StatelessWidget {
       AppTheme.human,
     ),
     (
+      Icons.fact_check_rounded,
+      'PS3 self-test (proof)',
+      'Runs every sentence of the problem statement live and shows pass/fail with the real conversation as evidence.',
+      '/selftest',
+      AppTheme.success,
+    ),
+    (
       Icons.admin_panel_settings_rounded,
       'Admin console',
       'AI keys and models, every channel, the knowledge base, demo data and QR codes.',

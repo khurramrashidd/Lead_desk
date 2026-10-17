@@ -35,6 +35,7 @@ deploy
 flutter run
 ```
 - `deploy` (= deploy.bat) installs packages, runs the backend tests (**must say `pass 22`**), and deploys the AI brain + Firestore rules. It may ask to enable an API: answer **y**.
+- Proof for the judges: Admin → Demo → **Open the self-test** (docs/PROOF.md).
 - Test on your phone (app and web): **docs/TESTING.md**.
 
 ### 3. After the first deploy (2 minutes)

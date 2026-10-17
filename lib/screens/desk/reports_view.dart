@@ -21,7 +21,7 @@ class ReportsView extends StatelessWidget {
         builder: (context, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
           // Load-test leads are excluded from conversion numbers.
-          final leads = snap.data!.map((d) => d.data()).where((l) => l['burst'] != true).toList();
+          final leads = snap.data!.map((d) => d.data()).where((l) => l['burst'] != true && l['selftest'] != true).toList();
 
           final bySource = _group(leads, (l) => [(l['firstSource'] as String?) ?? 'web']);
           final byCounsellor = _group(leads, (l) => [(l['assignedTo'] as String?) ?? 'Asha only']);
