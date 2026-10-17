@@ -1,28 +1,14 @@
-/** WhatsApp Cloud API: receive text and voice notes, send replies. */
-import { db, FieldValue, type Lead } from "./db";
-import { normalizePhone } from "./identity";
-import { latinName, resolveIdentity } from "./merge";
+/**
+ * Meta webhook: WhatsApp Cloud API and Instagram DMs arrive at the same endpoint (metaWebhook).
+ * Text and voice notes are stored on the lead; the message trigger makes Asha answer.
+ */
+import { channelConfig } from "./channels";
+import { addInbound, findOrCreateLead } from "./leads";
 
-const GRAPH = `https://graph.facebook.com/${process.env.WA_GRAPH_VERSION || "v23.0"}`;
-
-export function whatsappConfigured(): boolean {
-  return !!(process.env.WA_TOKEN && process.env.WA_PHONE_ID);
-}
-
-export async function sendWhatsAppText(toWaId: string, body: string): Promise<boolean> {
-  if (!whatsappConfigured()) return false;
-  const res = await fetch(`${GRAPH}/${process.env.WA_PHONE_ID}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.WA_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ messaging_product: "whatsapp", to: toWaId, type: "text", text: { body: body.slice(0, 4000) } }),
-  });
-  if (!res.ok) console.error("WhatsApp send failed", res.status, await res.text());
-  return res.ok;
-}
-
-async function downloadMedia(mediaId: string): Promise<{ b64: string; mime: string } | null> {
-  const auth = { Authorization: `Bearer ${process.env.WA_TOKEN}` };
-  const meta = await fetch(`${GRAPH}/${mediaId}`, { headers: auth });
+async function downloadWaMedia(mediaId: string): Promise<{ b64: string; mime: string } | null> {
+  const c = await channelConfig();
+  const auth = { Authorization: `Bearer ${c.waToken}` };
+  const meta = await fetch(`https://graph.facebook.com/${c.graphVersion}/${mediaId}`, { headers: auth });
   if (!meta.ok) return null;
   const info = (await meta.json()) as { url: string; mime_type: string };
   const file = await fetch(info.url, { headers: auth });
@@ -32,79 +18,94 @@ async function downloadMedia(mediaId: string): Promise<{ b64: string; mime: stri
   return { b64: buf.toString("base64"), mime: (info.mime_type || "audio/ogg").split(";")[0].trim() };
 }
 
+async function downloadUrl(url: string): Promise<{ b64: string; mime: string } | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > 700_000) return null;
+    return { b64: buf.toString("base64"), mime: (res.headers.get("content-type") || "audio/mp4").split(";")[0].trim() };
+  } catch {
+    return null;
+  }
+}
+
 interface WaMessage {
   from: string;
   id: string;
   type: string;
   text?: { body: string };
   audio?: { id: string };
+  voice?: { id: string };
+  button?: { text: string };
+  interactive?: { button_reply?: { title: string }; list_reply?: { title: string } };
 }
 
-/** Finds the lead for this WhatsApp number (any phone format) or creates one. */
-async function leadForWhatsApp(waId: string, profileName?: string): Promise<string> {
-  const byWa = await db.collection("leads").where("waId", "==", waId).limit(5).get();
-  const live = byWa.docs.find((d) => !(d.data() as Lead).mergedInto);
-  if (live) return live.id;
-
-  const ref = db.collection("leads").doc();
-  await ref.set({
-    name: profileName ?? "",
-    nameLatin: latinName(profileName) ?? "",
-    phone: normalizePhone(waId) ?? waId,
-    waId,
-    sources: ["whatsapp"],
-    firstSource: "whatsapp",
-    lastChannel: "whatsapp",
-    status: "new",
-    score: 0,
-    createdAt: FieldValue.serverTimestamp(),
-    lastMessageAt: FieldValue.serverTimestamp(),
-  });
-  // Rahul Patil from the web form + राहुल पाटील on WhatsApp -> one person
-  await resolveIdentity(ref.id);
-  const after = (await ref.get()).data() as Lead;
-  return after.mergedInto ?? ref.id;
+async function handleWhatsApp(value: any): Promise<void> {
+  const contacts: { wa_id: string; profile?: { name?: string } }[] = value?.contacts ?? [];
+  for (const m of (value?.messages ?? []) as WaMessage[]) {
+    const profileName = contacts.find((c) => c.wa_id === m.from)?.profile?.name;
+    const leadId = await findOrCreateLead({ channel: "whatsapp", name: profileName, phone: m.from, waId: m.from });
+    const msg: { id: string; text?: string; audioB64?: string; audioMime?: string; meta: Record<string, unknown> } = {
+      id: `wa_${m.id}`,
+      meta: { waMessageId: m.id },
+    };
+    const audio = m.audio ?? m.voice;
+    if (m.type === "text" && m.text) msg.text = m.text.body;
+    else if (audio) {
+      const media = await downloadWaMedia(audio.id);
+      if (media) {
+        msg.audioB64 = media.b64;
+        msg.audioMime = media.mime;
+        msg.text = "🎤 Voice note";
+      } else msg.text = "(voice note could not be downloaded)";
+    } else if (m.button?.text) msg.text = m.button.text;
+    else if (m.interactive) msg.text = m.interactive.button_reply?.title ?? m.interactive.list_reply?.title ?? "(reply)";
+    else msg.text = `(${m.type} message)`;
+    await addInbound(leadId, "whatsapp", msg, { waId: m.from });
+  }
 }
 
-/** Handles one webhook POST body from Meta. */
-export async function handleWebhook(body: any): Promise<void> {
+interface IgMessaging {
+  sender?: { id: string };
+  recipient?: { id: string };
+  message?: { mid: string; text?: string; is_echo?: boolean; attachments?: { type: string; payload?: { url?: string } }[] };
+}
+
+async function handleInstagram(entry: any): Promise<void> {
+  const c = await channelConfig();
+  for (const ev of (entry?.messaging ?? []) as IgMessaging[]) {
+    const m = ev.message;
+    const from = ev.sender?.id;
+    if (!m || !from || m.is_echo || from === c.igUserId) continue; // our own replies echo back
+    const leadId = await findOrCreateLead({ channel: "instagram", igId: from, name: "" });
+    const msg: { id: string; text?: string; audioB64?: string; audioMime?: string; meta: Record<string, unknown> } = {
+      id: `ig_${m.mid}`.replace(/[^\w-]/g, "_").slice(0, 120),
+      meta: { igMessageId: m.mid },
+    };
+    const audio = m.attachments?.find((a) => a.type === "audio");
+    if (m.text) msg.text = m.text;
+    else if (audio?.payload?.url) {
+      const media = await downloadUrl(audio.payload.url);
+      if (media) {
+        msg.audioB64 = media.b64;
+        msg.audioMime = media.mime;
+        msg.text = "🎤 Voice note";
+      } else msg.text = "(voice note could not be downloaded)";
+    } else msg.text = `(${m.attachments?.[0]?.type ?? "unsupported"} message)`;
+    await addInbound(leadId, "instagram", msg, { igId: from });
+  }
+}
+
+/** Handles one webhook POST body from Meta (WhatsApp or Instagram). */
+export async function handleMetaWebhook(body: any): Promise<void> {
+  if (body?.object === "instagram") {
+    for (const entry of body?.entry ?? []) await handleInstagram(entry);
+    return;
+  }
   for (const entry of body?.entry ?? []) {
     for (const change of entry?.changes ?? []) {
-      const value = change?.value;
-      const contacts: { wa_id: string; profile?: { name?: string } }[] = value?.contacts ?? [];
-      for (const m of (value?.messages ?? []) as WaMessage[]) {
-        const profileName = contacts.find((c) => c.wa_id === m.from)?.profile?.name;
-        const leadId = await leadForWhatsApp(m.from, profileName);
-        const leadRef = db.doc(`leads/${leadId}`);
-
-        const msg: Record<string, unknown> = {
-          role: "user",
-          channel: "whatsapp",
-          createdAt: FieldValue.serverTimestamp(),
-          meta: { waMessageId: m.id },
-        };
-        if (m.type === "text" && m.text) msg.text = m.text.body;
-        else if (m.type === "audio" && m.audio) {
-          const media = await downloadMedia(m.audio.id);
-          if (media) {
-            msg.audioB64 = media.b64;
-            msg.audioMime = media.mime;
-          } else msg.text = "(voice note could not be downloaded)";
-        } else msg.text = `(${m.type} message)`;
-
-        await leadRef.set(
-          {
-            waId: m.from,
-            lastChannel: "whatsapp",
-            sources: FieldValue.arrayUnion("whatsapp"),
-            lastInboundAt: FieldValue.serverTimestamp(),
-            lastMessageAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        );
-        // idempotent: Meta can retry the same webhook
-        await leadRef.collection("messages").doc(`wa_${m.id}`).create(msg).catch(() => undefined);
-      }
+      if (change?.field === "messages" && change?.value?.messages) await handleWhatsApp(change.value);
     }
   }
 }

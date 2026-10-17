@@ -1,14 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-import '../services/repo.dart';
-import '../utils/ist.dart';
-
-/// SAMPLE knowledge base in TechSummitTrainers' style.
-/// Replace it with the sponsor's real courses from the Admin screen.
+/// SAMPLE knowledge base for the stand-in brand, shown on the website until kb/main loads.
+/// The real copy lives in Firestore (Admin → Knowledge base); the AI quotes only that copy.
 const Map<String, dynamic> sampleKnowledgeBase = {
-  'instituteName': 'TechSummitTrainers',
+  'instituteName': 'SechTummit Trainers',
+  'sample': true,
   'city': 'Pune',
-  'address': 'Pimpri, Pune (sample address)',
+  'address': 'Pimpri-Chinchwad, Pune (sample address)',
   'courses': [
     {
       'id': 'py',
@@ -104,106 +100,3 @@ const Map<String, dynamic> sampleKnowledgeBase = {
     {'q': 'Do I need a laptop?', 'a': 'Yes, any laptop with 8 GB RAM. Classroom learners can use lab machines.'},
   ],
 };
-
-class Seed {
-  /// IST wall-clock time -> real UTC instant.
-  static DateTime _istToUtc(DateTime istDay, int hour, int minute) =>
-      DateTime.utc(istDay.year, istDay.month, istDay.day, hour, minute).subtract(const Duration(hours: 5, minutes: 30));
-
-  static Future<void> loadKnowledgeBase() =>
-      Repo.db.doc('kb/main').set({...sampleKnowledgeBase, 'updatedAt': FieldValue.serverTimestamp()});
-
-  /// Demo-class calendar for the next 7 days (capacity-limited, no double booking).
-  static Future<int> loadSlots() async {
-    final batch = Repo.db.batch();
-    final today = Ist.now();
-    var count = 0;
-    final plan = <List<Object>>[
-      [11, 0, 'Full Stack Java — demo class', 'Online live', 'fsj'],
-      [17, 0, 'Python Foundations — demo class', 'Classroom, Pimpri', 'py'],
-      [19, 0, 'Data Science & AI — demo class', 'Online live', 'ds'],
-    ];
-    for (var d = 0; d <= 7; d++) {
-      final day = DateTime.utc(today.year, today.month, today.day).add(Duration(days: d));
-      for (final p in plan) {
-        final start = _istToUtc(day, p[0] as int, p[1] as int);
-        if (start.isBefore(DateTime.now().add(const Duration(hours: 1)))) continue;
-        final id = 'slot_${day.year}${_pad2(day.month)}${_pad2(day.day)}_${_pad2(p[0] as int)}${_pad2(p[1] as int)}';
-        batch.set(Repo.db.collection('slots').doc(id), {
-          'title': p[2],
-          'mode': p[3],
-          'courseId': p[4],
-          'startAt': Timestamp.fromDate(start),
-          'durationMin': 60,
-          'capacity': 10,
-          'booked': 0,
-        });
-        count++;
-      }
-    }
-    await batch.commit();
-    return count;
-  }
-
-  static String _pad2(int n) => n.toString().padLeft(2, '0');
-
-  /// Realistic demo leads so the dashboard and reports look alive.
-  static Future<void> loadDemoLeads() async {
-    final now = DateTime.now();
-    Timestamp ago(int hours) => Timestamp.fromDate(now.subtract(Duration(hours: hours)));
-    final leads = <String, Map<String, dynamic>>{
-      'demo_rahul_form': {
-        'name': 'Rahul Patil', 'phone': '9876543210', 'firstSource': 'form', 'sources': ['form'],
-        'status': 'new', 'score': 35, 'temperature': 'cold', 'city': 'Pimpri',
-        'summary': ['Filled the website form for Full Stack Java.', 'No conversation yet.', 'Next: first call or WhatsApp.'],
-        'objections': <String>[], 'createdAt': ago(30), 'lastMessageAt': ago(30), 'assignedTo': 'Priya',
-      },
-      'demo_sneha': {
-        'name': 'Sneha Kulkarni', 'phone': '9822011223', 'firstSource': 'instagram', 'sources': ['instagram', 'web'],
-        'status': 'demo_booked', 'score': 82, 'temperature': 'hot', 'city': 'Wakad', 'language': 'marathi-english',
-        'summary': ['BCom 2022, 2-year gap, wants to become a developer.', 'Worried about the gap and fees; parents supportive.', 'Demo booked for Python Foundations.'],
-        'objections': ['fees', 'job_fear'], 'createdAt': ago(50), 'lastMessageAt': ago(3), 'assignedTo': 'Priya',
-        'suggestedMessage': 'Sneha, tumcha demo udya aahe. Kahi prashna aslyas nakki vichara!',
-      },
-      'demo_amit': {
-        'name': 'Amit Shinde', 'phone': '9765012345', 'firstSource': 'whatsapp', 'sources': ['whatsapp'],
-        'status': 'admitted', 'score': 95, 'temperature': 'hot', 'city': 'Chinchwad',
-        'summary': ['BE Mechanical, working in sales.', 'Wanted weekend batch.', 'Admitted to Full Stack Java (weekend).'],
-        'objections': ['time'], 'createdAt': ago(200), 'lastMessageAt': ago(40), 'assignedTo': 'Amit',
-      },
-      'demo_pooja': {
-        'name': 'Pooja Jadhav', 'phone': '9890098900', 'firstSource': 'walkin', 'sources': ['walkin'],
-        'status': 'engaged', 'score': 58, 'temperature': 'warm', 'city': 'Pimpri',
-        'summary': ['12th + BSc, interested in Data Science.', 'Father wants to meet the trainer first.', 'Next: invite father to demo.'],
-        'objections': ['family_approval'], 'createdAt': ago(26), 'lastMessageAt': ago(20), 'assignedTo': 'Amit',
-      },
-      'demo_imran': {
-        'name': 'Imran Shaikh', 'phone': '9970099700', 'firstSource': 'call', 'sources': ['call'],
-        'status': 'lost', 'score': 15, 'temperature': 'cold', 'city': 'Nigdi',
-        'summary': ['Looking for a free course.', 'Fees too high, no EMI interest.', 'Marked lost.'],
-        'objections': ['fees'], 'createdAt': ago(300), 'lastMessageAt': ago(250), 'assignedTo': 'Priya',
-      },
-      'demo_kiran': {
-        'name': 'Kiran More', 'phone': '9011090110', 'firstSource': 'instagram', 'sources': ['instagram'],
-        'status': 'admitted', 'score': 90, 'temperature': 'hot', 'city': 'Akurdi',
-        'summary': ['Final-year BCA.', 'Chose MERN after demo.', 'Admitted, paid first EMI.'],
-        'objections': <String>[], 'createdAt': ago(400), 'lastMessageAt': ago(100), 'assignedTo': 'Priya',
-      },
-      'demo_neha': {
-        'name': 'Neha Gaikwad', 'phone': '9637096370', 'firstSource': 'web', 'sources': ['web'],
-        'status': 'engaged', 'score': 64, 'temperature': 'warm', 'city': 'Pune',
-        'summary': ['Working in BPO, wants testing role.', 'Can study only on weekends.', 'Next: share weekend Testing batch.'],
-        'objections': ['time'], 'createdAt': ago(70), 'lastMessageAt': ago(60), 'assignedTo': 'Amit',
-      },
-      'demo_suresh': {
-        'name': 'Suresh Pawar', 'phone': '9545095450', 'firstSource': 'walkin', 'sources': ['walkin'],
-        'status': 'admitted', 'score': 88, 'temperature': 'hot', 'city': 'Pimpri',
-        'summary': ['Walked in with his father.', 'Liked classroom batch.', 'Admitted to Software Testing.'],
-        'objections': ['family_approval'], 'createdAt': ago(500), 'lastMessageAt': ago(300), 'assignedTo': 'Amit',
-      },
-    };
-    final batch = Repo.db.batch();
-    leads.forEach((id, data) => batch.set(Repo.leads.doc(id), {...data, 'demo': true, 'lastChannel': 'web'}));
-    await batch.commit();
-  }
-}

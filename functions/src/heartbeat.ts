@@ -1,23 +1,26 @@
 /**
- * Runs every 5 minutes on Google's servers (and instantly when the demo
- * "Fast-forward" button moves the clock). Sends demo reminders and fires
- * next-best-action follow-ups so no lead is ever forgotten.
+ * Runs every 5 minutes on Google's servers (and instantly when the demo "Fast-forward" button
+ * moves the clock). Sends demo reminders and fires next-best-action follow-ups, so no lead
+ * depends on a counsellor remembering.
  */
 import { db, FieldValue, Timestamp, logEvent, type Lead } from "./db";
+import { deliverOn } from "./channels";
 import { formatIst, t } from "./lang";
-import { sendWhatsAppText } from "./whatsapp";
+import { decideNextAction, reachableChannel } from "./nba";
 
 const HOUR = 3_600_000;
 
-async function deliver(leadId: string, lead: Lead, text: string, kind: string, now: Date): Promise<void> {
-  const channel = lead.waId ? "whatsapp" : lead.lastChannel ?? "web";
-  let delivered = channel !== "whatsapp";
-  let note = "";
-  if (channel === "whatsapp" && lead.waId) {
-    const lastIn = lead.lastInboundAt?.toDate();
-    const windowOpen = !!lastIn && now.getTime() - lastIn.getTime() < 24 * HOUR;
-    if (windowOpen) delivered = await sendWhatsAppText(lead.waId, text);
-    else note = "WhatsApp 24h window closed: send an approved template or call";
+async function deliver(leadId: string, lead: Lead, text: string, kind: string, now: Date, wanted?: string): Promise<boolean> {
+  const reach = reachableChannel(lead, now);
+  const channel = wanted && wanted !== "call" ? wanted : reach.channel === "call" ? lead.lastChannel ?? "web" : reach.channel;
+  let delivered = false;
+  let note = reach.note;
+  if (reach.channel === "call") {
+    note = reach.note || "needs a phone call";
+  } else {
+    const r = await deliverOn(channel, lead, text);
+    delivered = r.delivered;
+    note = r.note || note;
   }
   await db.collection(`leads/${leadId}/messages`).add({
     role: "ai",
@@ -27,14 +30,16 @@ async function deliver(leadId: string, lead: Lead, text: string, kind: string, n
     meta: { kind, automatic: true, delivered, note, simulatedAt: Timestamp.fromDate(now) },
   });
   await db.doc(`leads/${leadId}`).set(
-    { lastMessageAt: FieldValue.serverTimestamp(), ...(note ? { needsHuman: true, handoffReason: note } : {}) },
+    { lastMessageAt: FieldValue.serverTimestamp(), ...(delivered ? {} : { needsHuman: true, handoffReason: `${kind}: ${note || "could not deliver automatically"}` }) },
     { merge: true },
   );
+  return delivered;
 }
 
-export async function runHeartbeat(now: Date): Promise<{ reminders: number; followups: number }> {
+export async function runHeartbeat(now: Date): Promise<{ reminders: number; followups: number; calls: number }> {
   let reminders = 0;
   let followups = 0;
+  let calls = 0;
 
   // ---- Demo-class reminders: 24 hours and 1 hour before ----
   const soon = await db
@@ -69,15 +74,35 @@ export async function runHeartbeat(now: Date): Promise<{ reminders: number; foll
     const na = lead.nextAction;
     if (!na || na.done || lead.mergedInto || lead.aiPaused) continue;
     if (lead.status === "admitted" || lead.status === "lost") continue;
+
     if (na.channel === "call") {
-      await d.ref.set({ needsHuman: true, handoffReason: `Call now: ${na.reason}`, nextAction: { done: true } }, { merge: true });
-      await logEvent("followup", d.id, { channel: "call", reason: na.reason });
-    } else if (na.message) {
-      await deliver(d.id, lead, na.message, "followup", now);
-      await d.ref.set({ nextAction: { done: true }, followupsSent: FieldValue.increment(1) }, { merge: true });
-      await logEvent("followup", d.id, { channel: na.channel, reason: na.reason, message: na.message });
+      await d.ref.set(
+        { needsHuman: true, handoffReason: `📞 Call now — ${na.reason}`, nextAction: { done: true }, callTask: { at: na.at, reason: na.reason, script: na.message } },
+        { merge: true },
+      );
+      await logEvent("followup", d.id, { channel: "call", playbook: na.playbook, reason: na.reason });
+      calls++;
+      continue;
     }
+    const delivered = await deliver(d.id, lead, na.message || t("nudge", lead.language), "followup", now, na.channel);
+    const unanswered = (lead.unansweredFollowups ?? 0) + 1;
+    // Cadence: decide the step after this one with the same rules.
+    const next = decideNextAction({
+      lead: { ...lead, unansweredFollowups: unanswered, followupsSent: (lead.followupsSent ?? 0) + 1 },
+      now,
+      aiMessage: t("nudge", lead.language),
+    });
+    await d.ref.set(
+      {
+        nextAction: next ?? { done: true },
+        followupsSent: FieldValue.increment(1),
+        unansweredFollowups: unanswered,
+        lastFollowup: { at: Timestamp.fromDate(now), playbook: na.playbook, channel: na.channel, delivered },
+      },
+      { merge: true },
+    );
+    await logEvent("followup", d.id, { channel: na.channel, playbook: na.playbook, reason: na.reason, message: na.message, delivered });
     followups++;
   }
-  return { reminders, followups };
+  return { reminders, followups, calls };
 }

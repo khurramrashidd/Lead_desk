@@ -70,7 +70,9 @@ class TeamSection extends StatelessWidget {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('Team (${docs.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            for (final d in docs)
+            Text('Leads are assigned by language: tick the languages each person counsels in.',
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5)),
+            for (final d in docs) ...[
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: _avatar(d.data()),
@@ -89,6 +91,26 @@ class TeamSection extends StatelessWidget {
                         child: Chip(label: Text(d.data()['role'] as String? ?? '')),
                       ),
               ),
+              Padding(
+                padding: const EdgeInsets.only(left: 56, bottom: 8),
+                child: Wrap(spacing: 6, children: [
+                  for (final l in const [('en', 'English'), ('hi', 'हिंदी'), ('mr', 'मराठी')])
+                    FilterChip(
+                      label: Text(l.$2),
+                      selected: ((d.data()['languages'] as List?) ?? const ['en']).contains(l.$1),
+                      onSelected: (on) {
+                        final cur = ((d.data()['languages'] as List?) ?? const ['en']).map((e) => '$e').toSet();
+                        if (on) {
+                          cur.add(l.$1);
+                        } else {
+                          cur.remove(l.$1);
+                        }
+                        _do(context, () => TeamService.setLanguages(d.id, cur.toList()), 'Languages saved');
+                      },
+                    ),
+                ]),
+              ),
+            ],
           ]);
         },
       ),

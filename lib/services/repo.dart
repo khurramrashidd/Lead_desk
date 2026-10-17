@@ -1,19 +1,20 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'api.dart';
+
 /// All Firestore reads and writes in one place.
 class Repo {
   static final db = FirebaseFirestore.instance;
 
   static CollectionReference<Map<String, dynamic>> get leads => db.collection('leads');
-  static CollectionReference<Map<String, dynamic>> messages(String leadId) =>
-      leads.doc(leadId).collection('messages');
+  static CollectionReference<Map<String, dynamic>> messages(String leadId) => leads.doc(leadId).collection('messages');
 
   /// Live list of leads for the counsellor desk (merged duplicates hidden).
   static Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> watchLeads() {
     return leads
         .orderBy('lastMessageAt', descending: true)
-        .limit(150)
+        .limit(200)
         .snapshots()
         .map((s) => s.docs.where((d) => d.data()['mergedInto'] == null).toList());
   }
@@ -24,7 +25,39 @@ class Repo {
       messages(leadId).orderBy('createdAt').limitToLast(200).snapshots();
 
   static Stream<QuerySnapshot<Map<String, dynamic>>> watchEvents() =>
-      db.collection('events').orderBy('at', descending: true).limit(40).snapshots();
+      db.collection('events').orderBy('at', descending: true).limit(60).snapshots();
+
+  /// The knowledge base the AI quotes from — the website reads the very same document.
+  static Stream<DocumentSnapshot<Map<String, dynamic>>> watchKb() => db.doc('kb/main').snapshots();
+
+  /// Open slots with free seats, soonest first. kind: demo | call | meet (null = all).
+  static Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> watchSlots([String? kind]) => db
+      .collection('slots')
+      .where('startAt', isGreaterThan: Timestamp.fromDate(DateTime.now()))
+      .orderBy('startAt')
+      .limit(80)
+      .snapshots()
+      .map((s) => s.docs.where((d) {
+            final x = d.data();
+            final k = (x['kind'] as String?) ?? 'demo';
+            final free = ((x['capacity'] as num?)?.toInt() ?? 0) - ((x['booked'] as num?)?.toInt() ?? 0);
+            return free > 0 && (kind == null || k == kind);
+          }).toList());
+
+  /// Hot-lead alerts for this counsellor (sorted on the device, so no composite index is needed).
+  static Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> watchAlerts(String uid) => db
+      .collection('alerts')
+      .where('uid', isEqualTo: uid)
+      .limit(30)
+      .snapshots()
+      .map((s) => s.docs.toList()
+        ..sort((a, b) {
+          final ta = a.data()['at'] as Timestamp?;
+          final tb = b.data()['at'] as Timestamp?;
+          return (tb?.millisecondsSinceEpoch ?? 0).compareTo(ta?.millisecondsSinceEpoch ?? 0);
+        }));
+
+  static Future<void> markAlertRead(String id) => db.doc('alerts/$id').update({'read': true});
 
   /// Creates a lead and returns its id.
   static Future<String> createLead({
@@ -41,25 +74,27 @@ class Repo {
   }) async {
     final ref = leads.doc();
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    await ref.set({
-      // Firestore rules: a student can read only leads that list their uid here.
-      if (uid != null) 'viewerUids': [uid],
-      if (name != null && name.isNotEmpty) 'name': name,
-      if (phone != null && phone.isNotEmpty) 'phone': phone,
-      if (email != null && email.isNotEmpty) 'email': email,
-      if (city != null && city.isNotEmpty) 'city': city,
-      'lat': ?lat,
-      'lng': ?lng,
-      'assignedTo': ?assignedTo,
+    final data = <String, dynamic>{
       'sources': [source],
       'firstSource': source,
-      'lastChannel': source == 'whatsapp' ? 'whatsapp' : 'web',
+      'lastChannel': source == 'whatsapp' ? 'whatsapp' : (source == 'walkin' || source == 'form' ? source : 'web'),
       'status': status,
       'score': 0,
+      'userMessages': 0,
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessageAt': FieldValue.serverTimestamp(),
       ...extra,
-    });
+    };
+    // Firestore rules: a student can read only leads that list their uid here.
+    if (uid != null) data['viewerUids'] = [uid];
+    if (name != null && name.isNotEmpty) data['name'] = name;
+    if (phone != null && phone.isNotEmpty) data['phone'] = phone;
+    if (email != null && email.isNotEmpty) data['email'] = email.trim().toLowerCase();
+    if (city != null && city.isNotEmpty) data['city'] = city;
+    if (lat != null) data['lat'] = lat;
+    if (lng != null) data['lng'] = lng;
+    if (assignedTo != null) data['assignedTo'] = assignedTo;
+    await ref.set(data);
     return ref.id;
   }
 
@@ -76,17 +111,18 @@ class Repo {
       'lastMessageAt': FieldValue.serverTimestamp(),
       'lastChannel': channel,
     }, SetOptions(merge: true));
-    await messages(leadId).add({
+    final msg = <String, dynamic>{
       'role': 'user',
       'channel': channel,
-      'text': ?text,
-      'audioB64': ?audioB64,
-      'audioMime': ?audioMime,
       'createdAt': FieldValue.serverTimestamp(),
-    });
+    };
+    if (text != null) msg['text'] = text;
+    if (audioB64 != null) msg['audioB64'] = audioB64;
+    if (audioMime != null) msg['audioMime'] = audioMime;
+    await messages(leadId).add(msg);
   }
 
-  /// A message typed by a human counsellor (after taking over).
+  /// A message typed by a human counsellor. Delivered on the lead's own channel by the backend.
   static Future<void> sendCounsellorMessage(String leadId, String text, {required String channel, required String me}) async {
     await messages(leadId).add({
       'role': 'counsellor',
@@ -98,16 +134,26 @@ class Repo {
     await leads.doc(leadId).set({
       'lastMessageAt': FieldValue.serverTimestamp(),
       'needsHuman': false,
-      'assignedTo': me,
     }, SetOptions(merge: true));
   }
 
+  /// The channel a counsellor's reply should go out on.
+  static String replyChannel(Map<String, dynamic> lead) {
+    final last = lead['lastChannel'] as String?;
+    if (last == 'telegram' && lead['telegramId'] != null) return 'telegram';
+    if (last == 'instagram' && lead['igId'] != null) return 'instagram';
+    if (lead['waId'] != null) return 'whatsapp';
+    if (lead['telegramId'] != null) return 'telegram';
+    return 'web';
+  }
+
   static Future<void> setTakeover(String leadId, bool humanTakesOver, String me) async {
-    await leads.doc(leadId).set({
-      'aiPaused': humanTakesOver,
-      if (humanTakesOver) 'assignedTo': me,
-      if (humanTakesOver) 'needsHuman': false,
-    }, SetOptions(merge: true));
+    final patch = <String, dynamic>{'aiPaused': humanTakesOver};
+    if (humanTakesOver) {
+      patch['takenOverBy'] = me;
+      patch['needsHuman'] = false;
+    }
+    await leads.doc(leadId).set(patch, SetOptions(merge: true));
     await messages(leadId).add({
       'role': 'system',
       'channel': 'web',
@@ -118,7 +164,75 @@ class Repo {
   }
 
   static Future<void> setStatus(String leadId, String status) =>
-      leads.doc(leadId).set({'status': status}, SetOptions(merge: true));
+      leads.doc(leadId).set({'status': status, 'statusChangedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+
+  /// Logs a phone call / Instagram DM / visit a counsellor handled outside the app.
+  static Future<void> logTouch(String leadId, {required String channel, required String note, required String me}) async {
+    await messages(leadId).add({
+      'role': 'system',
+      'channel': channel,
+      'text': '$me logged a ${channel == 'call' ? 'phone call' : channel}: $note',
+      'meta': {'kind': 'log', 'by': me},
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    await leads.doc(leadId).set({
+      'sources': FieldValue.arrayUnion([channel]),
+      'lastMessageAt': FieldValue.serverTimestamp(),
+      'needsHuman': false,
+      'callTask': FieldValue.delete(),
+    }, SetOptions(merge: true));
+  }
+
+  // ------------------------------------------------------------ server actions
+  static Future<void> merge(String keepId, String dupId) => Api.run('merge', {'keepId': keepId, 'dupId': dupId});
+  static Future<void> dismissDuplicate(String leadId, String otherId) =>
+      Api.run('dismissDuplicate', {'leadId': leadId, 'otherId': otherId});
+  static Future<void> assign(String leadId, String uid) => Api.run('assign', {'leadId': leadId, 'uid': uid});
+  static Future<void> book(String leadId, String slotId) => Api.run('book', {'leadId': leadId, 'slotId': slotId});
+  static Future<Map<String, dynamic>> seed(String what) => Api.run('seed', {'what': what});
+  static Future<Map<String, dynamic>> clearSeed() => Api.run('clearSeed');
+
+  /// Demo simulator: an enquiry exactly as if it arrived on WhatsApp / Instagram / a call…
+  static Future<Map<String, dynamic>> simulate({
+    required String channel,
+    String? name,
+    String? phone,
+    String? message,
+    String? relation,
+    String? studentName,
+  }) =>
+      Api.run('simulate', {
+        'channel': channel,
+        'name': ?name,
+        'phone': ?phone,
+        'message': ?message,
+        'relation': ?relation,
+        'studentName': ?studentName,
+      });
+
+  /// "Talk to a human": name / phone / email / brief → lead + a real call or video-meeting slot.
+  static Future<Map<String, dynamic>> requestCallback({
+    required String name,
+    required String phone,
+    required String email,
+    required String brief,
+    required String kind,
+    required String source,
+    String? slotId,
+    String relation = 'self',
+    String? studentName,
+  }) =>
+      Api.run('callback', {
+        'name': name,
+        'phone': phone,
+        'email': email,
+        'brief': brief,
+        'kind': kind,
+        'source': source,
+        'slotId': ?slotId,
+        'relation': relation,
+        'studentName': ?studentName,
+      });
 
   /// Demo "time machine": moves the server clock forward and runs reminders/follow-ups now.
   static Future<void> fastForward({required int hours}) async {

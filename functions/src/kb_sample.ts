@@ -1,0 +1,145 @@
+/* SAMPLE knowledge base for the stand-in brand. Edit it in Admin → Knowledge base. */
+import type { KnowledgeBase } from "./db";
+
+export const SAMPLE_KB: KnowledgeBase & { sample: boolean } = {
+  "instituteName": "SechTummit Trainers",
+  "city": "Pune",
+  "address": "Pimpri-Chinchwad, Pune (sample address)",
+  "courses": [
+    {
+      "id": "py",
+      "name": "Python Foundations",
+      "durationWeeks": 6,
+      "mode": "Online live or classroom (Pimpri)",
+      "feeInr": 12000,
+      "emi": {
+        "months": 2,
+        "perMonthInr": 6000
+      },
+      "prerequisites": "None. Starts from zero.",
+      "idealFor": "Non-CS graduates, career-gap returners and anyone who has never coded.",
+      "outcomes": "Programming basics, problem solving, 2 mini projects. Recommended first step before Full Stack or Data Science.",
+      "nextBatch": "27 Oct 2026, weekday evenings"
+    },
+    {
+      "id": "fsj",
+      "name": "Full Stack Java Developer",
+      "durationWeeks": 24,
+      "mode": "Hybrid: classroom + live online, all sessions recorded",
+      "feeInr": 65000,
+      "emi": {
+        "months": 6,
+        "perMonthInr": 11000
+      },
+      "prerequisites": "Basic logic. Python Foundations or any coding basics recommended for non-CS learners.",
+      "idealFor": "Freshers and graduates of any stream who can give 3-4 hours a day.",
+      "outcomes": "Core Java, Spring Boot 3, React, MySQL, 3 portfolio projects, interview preparation.",
+      "nextBatch": "3 Nov 2026 weekday mornings; 8 Nov 2026 weekends"
+    },
+    {
+      "id": "mern",
+      "name": "MERN Full Stack (JavaScript)",
+      "durationWeeks": 20,
+      "mode": "Hybrid",
+      "feeInr": 55000,
+      "emi": {
+        "months": 5,
+        "perMonthInr": 11500
+      },
+      "prerequisites": "Basic HTML or any coding basics.",
+      "idealFor": "Learners who want web development with JavaScript end to end.",
+      "outcomes": "JavaScript, React, Node.js, MongoDB, 3 projects.",
+      "nextBatch": "10 Nov 2026"
+    },
+    {
+      "id": "ds",
+      "name": "Data Science & AI with Python",
+      "durationWeeks": 24,
+      "mode": "Hybrid",
+      "feeInr": 75000,
+      "emi": {
+        "months": 6,
+        "perMonthInr": 12800
+      },
+      "prerequisites": "Python basics and 12th-standard maths.",
+      "idealFor": "Graduates comfortable with numbers who want analytics or ML roles.",
+      "outcomes": "Python, SQL, statistics, machine learning, GenAI basics, 4 projects.",
+      "nextBatch": "17 Nov 2026"
+    },
+    {
+      "id": "devops",
+      "name": "DevOps & Cloud",
+      "durationWeeks": 16,
+      "mode": "Online live",
+      "feeInr": 60000,
+      "emi": {
+        "months": 6,
+        "perMonthInr": 10000
+      },
+      "prerequisites": "Basic Linux and any programming language.",
+      "idealFor": "Working professionals and developers moving to DevOps.",
+      "outcomes": "Linux, Git, Docker, Kubernetes, CI/CD, AWS, 2 projects.",
+      "nextBatch": "15 Nov 2026 weekends"
+    },
+    {
+      "id": "qa",
+      "name": "Software Testing (Manual + Selenium)",
+      "durationWeeks": 12,
+      "mode": "Classroom (Pimpri) or online live",
+      "feeInr": 35000,
+      "emi": {
+        "months": 3,
+        "perMonthInr": 11700
+      },
+      "prerequisites": "None.",
+      "idealFor": "Graduates of any stream who want a quicker entry into IT.",
+      "outcomes": "Manual testing, Selenium with Java, API testing, 1 live project.",
+      "nextBatch": "1 Nov 2026"
+    }
+  ],
+  "scholarships": [
+    {
+      "id": "early",
+      "name": "Early Bird",
+      "rule": "Pay the full fee at least 7 days before the batch starts.",
+      "amountOffInr": 5000
+    },
+    {
+      "id": "women",
+      "name": "Women in Tech",
+      "rule": "For women learners in Full Stack Java and Data Science only.",
+      "percentOff": 10
+    },
+    {
+      "id": "referral",
+      "name": "Referral",
+      "rule": "When referred by a current or past student.",
+      "amountOffInr": 3000
+    }
+  ],
+  "policies": {
+    "placement": "Placement assistance for learners with 80% attendance who complete all projects: resume building, mock interviews and referrals to hiring partners. We do NOT guarantee a job or a salary.",
+    "emi": "Zero-interest EMI directly with the institute. First instalment at admission.",
+    "refund": "Full refund if you leave within 7 days of the batch start. No refund after that.",
+    "demo": "Free 60-minute demo class, online or at the Pimpri-Chinchwad centre. Parents are welcome.",
+    "recordings": "Every session is recorded; recordings stay available for 1 year.",
+    "batches": "Weekday batches: Mon-Fri, 2 hours a day. Weekend batches: Sat-Sun, 4 hours a day.",
+    "discounts": "No discounts other than the listed scholarships. Only one scholarship per learner.",
+    "counselling": "Counsellors call between 10 AM and 7 PM IST, Monday to Saturday."
+  },
+  "faqs": [
+    {
+      "q": "Can a non-IT or commerce graduate become a developer?",
+      "a": "Yes, many do. Start with Python Foundations to build logic, then move to Full Stack. It needs consistent daily practice."
+    },
+    {
+      "q": "Is there an age limit?",
+      "a": "No age limit."
+    },
+    {
+      "q": "Do I need a laptop?",
+      "a": "Yes, any laptop with 8 GB RAM. Classroom learners can use lab machines."
+    }
+  ],
+  "sample": true
+};

@@ -3,14 +3,11 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../utils/responsive.dart';
 
-<<<<<<< HEAD
-=======
 /// Height of the fixed site header. The hero adds this to its own top padding
 /// so the dark gradient runs underneath the bar — otherwise the bar's white
 /// logo would sit on the white page background and vanish.
 double navHeight(BuildContext context) => screenSizeOf(context) == ScreenSize.phone ? 62 : 74;
 
->>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
 /// Horizontal rhythm for the whole public site.
 class SitePadding {
   static EdgeInsets of(BuildContext context) {
@@ -113,7 +110,7 @@ class Eyebrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = onDark ? const Color(0xFFFBBF24) : AppTheme.indigo;
+    final fg = onDark ? const Color(0xFF5EEAD4) : AppTheme.indigo;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(

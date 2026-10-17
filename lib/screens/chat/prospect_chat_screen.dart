@@ -5,11 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app_theme.dart';
+import '../../l10n.dart';
 import '../../services/repo.dart';
 import '../../services/voice_recorder.dart';
 import '../../utils/ist.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/lang_switch.dart';
 import '../../widgets/message_bubble.dart';
+import '../site/book_call_sheet.dart';
 
 /// What a student or parent sees — from the QR code, the website widget or a link.
 /// No app, no login, no form. Text or a voice note in English, हिंदी or मराठी.
@@ -20,6 +23,7 @@ class ProspectChatScreen extends StatefulWidget {
     this.leadId,
     this.embedded = false,
     this.onClose,
+    this.prefill,
   });
 
   /// Where this conversation came from: web, qr, instagram, form…
@@ -29,6 +33,9 @@ class ProspectChatScreen extends StatefulWidget {
   /// true when the chat is docked inside the website instead of being a page.
   final bool embedded;
   final VoidCallback? onClose;
+
+  /// Text placed in the box when the chat opens (e.g. "Is this right for me? — Full Stack Java").
+  final String? prefill;
 
   @override
   State<ProspectChatScreen> createState() => _ProspectChatScreenState();
@@ -49,20 +56,14 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
   bool _recording = false;
   bool _sending = false;
 
-  static const _greeting = 'Namaste 🙏 I am Asha, admissions counsellor at SechTummit Trainers.\n\n'
-      'Ask me anything — courses, fees, batches, or whether this is right for you. '
-      'Type or send a voice note in English, हिंदी or मराठी.';
+  String get _greeting => tr('chat.greeting');
 
-  static const _starters = [
-    'I\'m a commerce graduate with a 2-year gap — can I really become a developer?',
-    'Full Stack Java ki fees kitni hai?',
-    'मला डेटा सायन्स शिकायचं आहे',
-    'Demo class book karni hai',
-  ];
+  List<String> get _starters => [tr('chat.s1'), tr('chat.s2'), tr('chat.s3'), tr('chat.s4')];
 
   @override
   void initState() {
     super.initState();
+    if (widget.prefill != null) _text.text = widget.prefill!;
     _restore();
   }
 
@@ -128,7 +129,7 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
       await Repo.sendProspectMessage(id, text: body, channel: widget.source == 'qr' ? 'web' : 'web');
       _focus.requestFocus();
     } catch (e) {
-      _snack('Could not send. Check your internet and try again.');
+      _snack(tr('chat.failed'));
       debugPrint('send failed: $e');
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -141,7 +142,7 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
       setState(() => _recording = false);
       final note = await _recorder.stop();
       if (note == null) {
-        _snack('That was too short or too long — keep it under ${_recorder.maxSeconds}s.');
+        _snack('${tr('chat.short')} (max ${_recorder.maxSeconds}s)');
         return;
       }
       final id = await _ensureLead();
@@ -155,7 +156,7 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
     }
     final ok = await _recorder.start();
     if (!ok) {
-      _snack('Please allow microphone access to send a voice note.');
+      _snack(tr('chat.mic'));
       return;
     }
     setState(() => _recording = true);
@@ -190,12 +191,19 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<AppLang>(
+      valueListenable: L10n.lang,
+      builder: (context, _, _) => _buildChat(context),
+    );
+  }
+
+  Widget _buildChat(BuildContext context) {
     final body = Column(
       children: [
         _header(context),
         Expanded(
           child: Container(
-            color: context.isDark ? const Color(0xFF0C0D14) : const Color(0xFFF7F7FB),
+            color: context.isDark ? const Color(0xFF0A0F1A) : const Color(0xFFF3F6F7),
             child: _leadId == null ? _welcome() : _thread(),
           ),
         ),
@@ -249,11 +257,19 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
                 Row(children: [
                   _Dot(),
                   SizedBox(width: 6),
-                  Text('Admissions counsellor · replies 24×7',
-                      style: TextStyle(color: Colors.white70, fontSize: 11.5)),
+                  Flexible(
+                    child: Text('Admissions counsellor · 24×7',
+                        overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white70, fontSize: 11.5)),
+                  ),
                 ]),
               ],
             ),
+          ),
+          const LangSwitch(onDark: true),
+          IconButton(
+            tooltip: tr('chat.human'),
+            icon: const Icon(Icons.support_agent_rounded, color: Colors.white),
+            onPressed: () => showBookCallSheet(context, source: widget.source),
           ),
           if (widget.onClose != null)
             IconButton(
@@ -270,11 +286,11 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
   Widget _welcome() => ListView(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
         children: [
-          const MessageBubble(role: 'ai', text: _greeting),
+          MessageBubble(role: 'ai', text: _greeting),
           const SizedBox(height: 18),
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 10),
-            child: Text('TRY ASKING',
+            child: Text(tr('chat.try'),
                 style: TextStyle(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w800,
@@ -338,13 +354,37 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
           controller: _scroll,
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
           children: [
-            const MessageBubble(role: 'ai', text: _greeting),
+            MessageBubble(role: 'ai', text: _greeting),
             for (final d in visible) MessageBubble.fromDoc(d.data(), prospectView: true),
             if (waiting) const TypingIndicator(),
+            if (!waiting && last != null && last['role'] == 'ai') _quickReplies(last),
             const SizedBox(height: 8),
           ],
         );
       },
+    );
+  }
+
+  /// A/B/C buttons under an aptitude question, so the answer is one tap.
+  Widget _quickReplies(Map<String, dynamic> last) {
+    final meta = (last['meta'] as Map?)?.cast<String, dynamic>() ?? const {};
+    if (meta['kind'] != 'aptitude') return const SizedBox.shrink();
+    final options = ((meta['options'] as List?) ?? const []).map((e) => '$e').toList();
+    if (options.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, left: 2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr('chat.pick'), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: context.scheme.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final o in options)
+            ActionChip(
+              label: Text(o, style: const TextStyle(fontWeight: FontWeight.w600)),
+              avatar: const Icon(Icons.touch_app_rounded, size: 16),
+              onPressed: _sending ? null : () => _sendText(o.length > 1 ? o.substring(0, 1) : o),
+            ),
+        ]),
+      ]),
     );
   }
 
@@ -370,7 +410,7 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
               Text('${_recorder.elapsedSeconds}s', style: const TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Listening… ${left}s left',
+                child: Text('${tr('chat.listening')} $left ${tr('chat.left')}',
                     style: context.texts.bodySmall?.copyWith(fontSize: 12.5), overflow: TextOverflow.ellipsis),
               ),
               IconButton(tooltip: 'Cancel', icon: const Icon(Icons.delete_outline), onPressed: _cancelRecording),
@@ -381,7 +421,7 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                   shape: const StadiumBorder(),
                 ),
-                child: const Text('Send'),
+                child: Text(tr('chat.send')),
               ),
             ]),
           ),
@@ -409,7 +449,7 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _sendText(),
                     decoration: InputDecoration(
-                      hintText: 'Type in English, हिंदी or मराठी…',
+                      hintText: tr('chat.hint'),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),
                       enabledBorder: OutlineInputBorder(
@@ -447,7 +487,7 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
                 const SizedBox(width: 5),
                 Flexible(
                   child: Text(
-                    'Your chat reaches our counsellors only. Powered by AI Lead Desk.',
+                    '${tr('chat.privacy')} · AI Lead Desk',
                     style: TextStyle(fontSize: 10.8, color: context.scheme.onSurfaceVariant),
                     overflow: TextOverflow.ellipsis,
                   ),

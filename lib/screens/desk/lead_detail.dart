@@ -5,11 +5,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app_theme.dart';
 import '../../services/repo.dart';
+import '../../services/team_service.dart';
 import '../../utils/ist.dart';
 import '../../widgets/lead_widgets.dart';
 import '../../widgets/message_bubble.dart';
 
-/// Everything about one lead: the live conversation, what the AI worked out,
+/// Everything about one lead: the live conversation, what the AI and the rules worked out,
 /// and the one tap that puts a human in charge.
 class LeadDetail extends StatelessWidget {
   const LeadDetail({super.key, required this.leadId, required this.me, this.onClose});
@@ -22,6 +23,7 @@ class LeadDetail extends StatelessWidget {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: Repo.watchLead(leadId),
       builder: (context, snap) {
+        if (snap.hasError) return Center(child: Text('Could not load this lead: ${snap.error}'));
         final d = snap.data?.data();
         if (d == null) return const Center(child: CircularProgressIndicator());
         if (d['mergedInto'] != null) {
@@ -39,7 +41,7 @@ class LeadDetail extends StatelessWidget {
 
         return LayoutBuilder(builder: (context, c) {
           final header = _Header(leadId: leadId, d: d, me: me, onClose: onClose);
-          final chat = _Conversation(leadId: leadId, d: d, me: me);
+          final chat = _Conversation(key: ValueKey('conv_$leadId'), leadId: leadId, d: d, me: me);
           final insights = _Insights(leadId: leadId, d: d, me: me);
 
           if (c.maxWidth >= 920) {
@@ -52,7 +54,7 @@ class LeadDetail extends StatelessWidget {
                   child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(flex: 6, child: chat),
                     const VerticalDivider(width: 1),
-                    SizedBox(width: 352, child: insights),
+                    SizedBox(width: 372, child: insights),
                   ]),
                 ),
               ]),
@@ -100,6 +102,7 @@ class _Header extends StatelessWidget {
     final status = d['status'] as String? ?? 'new';
     final temp = d['temperature'] as String?;
     final lang = [d['language'], d['register']].where((e) => e != null && '$e'.isNotEmpty).join(' · ');
+    final assigned = d['assignedTo'] as String?;
 
     final takeover = FilledButton.icon(
       style: FilledButton.styleFrom(
@@ -111,20 +114,25 @@ class _Header extends StatelessWidget {
       onPressed: () => Repo.setTakeover(leadId, !paused, me),
     );
 
+    final callBtn = (phone != null && phone.isNotEmpty)
+        ? IconButton.filledTonal(
+            tooltip: 'Call +91 $phone',
+            onPressed: () => launchUrl(Uri.parse('tel:+91$phone')),
+            icon: const Icon(Icons.call_rounded, size: 19),
+          )
+        : null;
+
     final statusMenu = PopupMenuButton<String>(
       tooltip: 'Change status',
       initialValue: status,
       onSelected: (s) => Repo.setStatus(leadId, s),
-      itemBuilder: (_) => [
-        for (final e in statusLabels.entries) PopupMenuItem(value: e.key, child: Text(e.value)),
-      ],
+      itemBuilder: (_) => [for (final e in statusLabels.entries) PopupMenuItem(value: e.key, child: Text(e.value))],
       child: StatusPill(status),
     );
 
     final identity = Row(
       children: [
-        if (onClose != null)
-          IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: onClose),
+        if (onClose != null) IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: onClose),
         CircleAvatar(
           radius: 22,
           backgroundColor: AppTheme.temperature(temp).withValues(alpha: 0.14),
@@ -149,8 +157,9 @@ class _Header extends StatelessWidget {
               Text(
                 [
                   if (phone != null && phone.isNotEmpty) '+91 $phone',
-                  if (d['city'] != null) '📍 ${d['city']}',
+                  if ((d['city'] as String?)?.isNotEmpty == true) '📍 ${d['city']}',
                   if (lang.isNotEmpty) '🗣 $lang',
+                  if (assigned != null && assigned.isNotEmpty) '👤 $assigned',
                   if (aliases.isNotEmpty) '🔗 also “${aliases.join('”, “')}”',
                 ].join('   ·   '),
                 maxLines: 2,
@@ -171,13 +180,14 @@ class _Header extends StatelessWidget {
           return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             identity,
             const SizedBox(height: 10),
-            Row(children: [statusMenu, const Spacer(), takeover]),
+            Row(children: [statusMenu, const Spacer(), if (callBtn != null) ...[callBtn, const SizedBox(width: 8)], takeover]),
           ]);
         }
         return Row(children: [
           Expanded(child: identity),
           statusMenu,
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
+          if (callBtn != null) ...[callBtn, const SizedBox(width: 8)],
           takeover,
         ]);
       }),
@@ -187,7 +197,7 @@ class _Header extends StatelessWidget {
 
 // ----------------------------------------------------------- conversation
 class _Conversation extends StatefulWidget {
-  const _Conversation({required this.leadId, required this.d, required this.me});
+  const _Conversation({super.key, required this.leadId, required this.d, required this.me});
   final String leadId;
   final Map<String, dynamic> d;
   final String me;
@@ -200,13 +210,13 @@ class _ConversationState extends State<_Conversation> {
   final _text = TextEditingController();
   final _scroll = ScrollController();
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _messages = Repo.watchMessages(widget.leadId);
+  int _lastCount = 0;
 
   Future<void> _send() async {
     final body = _text.text.trim();
     if (body.isEmpty) return;
     _text.clear();
-    final channel = widget.d['waId'] != null ? 'whatsapp' : 'web';
-    await Repo.sendCounsellorMessage(widget.leadId, body, channel: channel, me: widget.me);
+    await Repo.sendCounsellorMessage(widget.leadId, body, channel: Repo.replyChannel(widget.d), me: widget.me);
   }
 
   @override
@@ -219,20 +229,20 @@ class _ConversationState extends State<_Conversation> {
   @override
   Widget build(BuildContext context) {
     final paused = widget.d['aiPaused'] == true;
+    final channel = Repo.replyChannel(widget.d);
     return Column(children: [
       Expanded(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: _messages,
           builder: (context, snap) {
             final docs = snap.data?.docs ?? [];
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
-            });
-            if (docs.isEmpty) {
-              return Center(
-                child: Text('No messages yet', style: context.texts.bodyMedium),
-              );
+            if (docs.length != _lastCount) {
+              _lastCount = docs.length;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+              });
             }
+            if (docs.isEmpty) return Center(child: Text('No messages yet', style: context.texts.bodyMedium));
             return ListView.builder(
               controller: _scroll,
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -256,17 +266,14 @@ class _ConversationState extends State<_Conversation> {
                   maxLines: 5,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => _send(),
-                  decoration: InputDecoration(hintText: 'Reply as ${widget.me}…'),
+                  decoration: InputDecoration(hintText: 'Reply as ${widget.me} · goes out on ${sourceLabels[channel] ?? channel}'),
                 ),
               ),
               const SizedBox(width: 8),
               IconButton.filled(
                 onPressed: _send,
                 icon: const Icon(Icons.send_rounded),
-                style: IconButton.styleFrom(
-                  padding: const EdgeInsets.all(14),
-                  backgroundColor: AppTheme.human,
-                ),
+                style: IconButton.styleFrom(padding: const EdgeInsets.all(14), backgroundColor: AppTheme.human),
               ),
             ]),
           ),
@@ -298,65 +305,78 @@ class _Insights extends StatelessWidget {
   final Map<String, dynamic> d;
   final String me;
 
+  Map<String, dynamic>? _map(String k) => (d[k] as Map?)?.cast<String, dynamic>();
+
   @override
   Widget build(BuildContext context) {
-    final summary = (d['summary'] as List?)?.cast<String>() ?? const <String>[];
-    final objections = (d['objections'] as List?)?.cast<String>() ?? const <String>[];
+    final summary = (d['summary'] as List?)?.map((e) => '$e').toList() ?? const <String>[];
+    final objections = (d['objections'] as List?)?.map((e) => '$e').toList() ?? const <String>[];
     final suggested = d['suggestedMessage'] as String?;
-    final na = (d['nextAction'] as Map?)?.cast<String, dynamic>();
-    final rec = (d['recommendation'] as Map?)?.cast<String, dynamic>();
-    final apt = (d['aptitude'] as Map?)?.cast<String, dynamic>();
-    final booking = (d['booking'] as Map?)?.cast<String, dynamic>();
-    final profile = (d['profile'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final channel = d['waId'] != null ? 'whatsapp' : 'web';
+    final na = _map('nextAction');
+    final rec = _map('recommendation');
+    final apt = _map('aptitude');
+    final booking = _map('booking');
+    final callback = _map('callback');
+    final callTask = _map('callTask');
+    final breakdown = _map('scoreBreakdown');
+    final profile = _map('profile') ?? const <String, dynamic>{};
+    final contacts = ((d['contacts'] as List?) ?? const []).whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+    final channel = Repo.replyChannel(d);
     final guardBlocks = (d['guardBlocks'] as num?)?.toInt() ?? 0;
+    final dupOf = d['possibleDuplicateOf'] as String?;
 
     return Container(
       color: context.scheme.surfaceContainerLow,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
         children: [
-          if (d['possibleDuplicateOf'] != null)
-            InsightCard(
-              title: 'Possible duplicate',
-              icon: Icons.warning_amber_rounded,
-              accent: AppTheme.warm,
-              child: Text('${d['possibleDuplicateReason'] ?? ''}\nOther lead: ${d['possibleDuplicateOf']}',
-                  style: context.texts.bodyMedium?.copyWith(fontSize: 13)),
-            ),
+          if (dupOf != null) _DuplicateCard(leadId: leadId, otherId: dupOf, reason: '${d['possibleDuplicateReason'] ?? ''}'),
           if (d['needsHuman'] == true)
             InsightCard(
               title: 'Needs a human',
               icon: Icons.pan_tool_rounded,
               accent: AppTheme.hot,
               child: Text(
-                (d['handoffReason'] as String?)?.isNotEmpty == true
-                    ? d['handoffReason'] as String
-                    : 'Asha asked for help on this one.',
+                (d['handoffReason'] as String?)?.isNotEmpty == true ? d['handoffReason'] as String : 'Asha asked for help on this one.',
                 style: context.texts.bodyMedium?.copyWith(fontSize: 13),
               ),
             ),
+          if (callback != null) _CallbackCard(callback: callback, phone: d['phone'] as String?),
+          if (callTask != null) _CallTaskCard(leadId: leadId, task: callTask, phone: d['phone'] as String?, me: me),
 
-          // ---- score ----
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: context.scheme.surface,
-              borderRadius: BorderRadius.circular(AppTheme.r16),
-              border: Border.all(color: context.scheme.outlineVariant),
-            ),
-            child: Row(children: [
-              ScoreBadge(score: (d['score'] as num?)?.toInt() ?? 0, temperature: d['temperature'] as String?, big: true),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Wrap(spacing: 6, runSpacing: 6, children: [
-                  TempChip(d['temperature'] as String?),
-                  for (final s in (d['sources'] as List?)?.cast<String>() ?? const <String>[])
-                    SmallChip(sourceLabels[s] ?? s),
-                  if (guardBlocks > 0) SmallChip('🛡 $guardBlocks blocked', color: AppTheme.guard),
-                ]),
-              ),
+          // ---- score with its breakdown
+          InsightCard(
+            title: 'Lead score',
+            icon: Icons.speed_rounded,
+            trailing: Text('rules + AI', style: TextStyle(fontSize: 10.5, color: context.scheme.onSurfaceVariant)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                ScoreBadge(score: (d['score'] as num?)?.toInt() ?? 0, temperature: d['temperature'] as String?, big: true),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Wrap(spacing: 6, runSpacing: 6, children: [
+                    TempChip(d['temperature'] as String?),
+                    for (final s in (d['sources'] as List?)?.map((e) => '$e') ?? const <String>[]) SmallChip(sourceLabels[s] ?? s),
+                    if (guardBlocks > 0) SmallChip('🛡 $guardBlocks blocked', color: AppTheme.guard),
+                  ]),
+                ),
+              ]),
+              if (breakdown != null) ...[
+                const SizedBox(height: 14),
+                _Bar('Fit', breakdown['fit'], 20, AppTheme.indigo),
+                _Bar('Intent', breakdown['intent'], 25, AppTheme.coral),
+                _Bar('Engagement', breakdown['engagement'], 15, AppTheme.info),
+                _Bar('Recency', breakdown['recency'], 15, AppTheme.human),
+                _Bar('Aptitude', breakdown['aptitude'], 10, AppTheme.ai),
+                _Bar('AI read', breakdown['aiRead'], 15, AppTheme.cold),
+                if (((breakdown['objections'] as num?) ?? 0) < 0) _Bar('Worries', breakdown['objections'], -12, AppTheme.hot),
+                const SizedBox(height: 6),
+                for (final r in ((breakdown['reasons'] as List?) ?? const []).take(6))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text('• $r', style: TextStyle(fontSize: 11.5, height: 1.4, color: context.scheme.onSurfaceVariant)),
+                  ),
+              ],
             ]),
           ),
 
@@ -368,19 +388,19 @@ class _Insights extends StatelessWidget {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final s in summary)
+                      for (var i = 0; i < summary.length; i++)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 6),
                           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 6, right: 8),
-                              child: Container(
-                                width: 4,
-                                height: 4,
-                                decoration: BoxDecoration(color: AppTheme.indigo, shape: BoxShape.circle),
-                              ),
+                            Container(
+                              width: 18,
+                              height: 18,
+                              margin: const EdgeInsets.only(right: 8, top: 1),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(color: AppTheme.indigo.withValues(alpha: 0.12), shape: BoxShape.circle),
+                              child: Text('${i + 1}', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: AppTheme.indigo)),
                             ),
-                            Expanded(child: Text(s, style: const TextStyle(fontSize: 13.2, height: 1.45))),
+                            Expanded(child: Text(summary[i], style: const TextStyle(fontSize: 13.2, height: 1.45))),
                           ]),
                         ),
                     ],
@@ -392,9 +412,7 @@ class _Insights extends StatelessWidget {
             icon: Icons.block_rounded,
             child: objections.isEmpty
                 ? Text('None raised yet.', style: context.texts.bodyMedium?.copyWith(fontSize: 13))
-                : Wrap(spacing: 6, runSpacing: 6, children: [
-                    for (final o in objections) SmallChip(objectionLabels[o] ?? o, color: AppTheme.warm),
-                  ]),
+                : Wrap(spacing: 6, runSpacing: 6, children: [for (final o in objections) SmallChip(objectionLabels[o] ?? o, color: AppTheme.warm)]),
           ),
 
           if (suggested != null && suggested.trim().isNotEmpty)
@@ -406,10 +424,7 @@ class _Insights extends StatelessWidget {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.indigo.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(AppTheme.r12),
-                  ),
+                  decoration: BoxDecoration(color: AppTheme.indigo.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(AppTheme.r12)),
                   child: SelectableText(suggested, style: const TextStyle(fontSize: 13.2, height: 1.5)),
                 ),
                 const SizedBox(height: 10),
@@ -437,32 +452,28 @@ class _Insights extends StatelessWidget {
               title: 'Next best action',
               icon: Icons.bolt_rounded,
               accent: na['done'] == true ? null : AppTheme.info,
+              trailing: na['playbook'] == null ? null : SmallChip(playbookLabels[na['playbook']] ?? '${na['playbook']}', color: AppTheme.info),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Text(_channelIcon(na['channel'] as String?), style: const TextStyle(fontSize: 14)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      na['done'] == true
-                          ? 'Already sent'
-                          : Ist.full(Ist.fromTimestamp(na['at']) ?? DateTime.now()),
+                      na['done'] == true ? 'Done' : '${sourceLabels[na['channel']] ?? na['channel']} · ${Ist.full(Ist.fromTimestamp(na['at']) ?? DateTime.now())}',
                       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                     ),
                   ),
-                  if (na['done'] != true)
-                    Text(Ist.relative(Ist.fromTimestamp(na['at'])),
-                        style: context.texts.bodySmall?.copyWith(fontSize: 11.5)),
+                  if (na['done'] != true) Text(Ist.relative(Ist.fromTimestamp(na['at'])), style: context.texts.bodySmall?.copyWith(fontSize: 11.5)),
                 ]),
                 if ((na['reason'] as String?)?.isNotEmpty == true) ...[
                   const SizedBox(height: 8),
-                  Text('Why: ${na['reason']}',
-                      style: context.texts.bodySmall?.copyWith(fontSize: 12.5, height: 1.45)),
+                  Text('Why: ${na['reason']}', style: context.texts.bodySmall?.copyWith(fontSize: 12.5, height: 1.45)),
                 ],
                 if ((na['message'] as String?)?.isNotEmpty == true) ...[
                   const SizedBox(height: 8),
                   Text('“${na['message']}”', style: const TextStyle(fontSize: 13, height: 1.45)),
                 ],
-                if (na['done'] != true && (na['message'] as String?)?.isNotEmpty == true)
+                if (na['done'] != true && (na['message'] as String?)?.isNotEmpty == true && na['channel'] != 'call')
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
@@ -484,31 +495,13 @@ class _Insights extends StatelessWidget {
               icon: Icons.school_rounded,
               accent: AppTheme.ai,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${rec['courseId']}'.toUpperCase(),
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, letterSpacing: 0.4)),
+                Text('${rec['courseName'] ?? rec['courseId']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                 const SizedBox(height: 5),
                 Text('${rec['reason'] ?? ''}', style: const TextStyle(fontSize: 13, height: 1.45)),
               ]),
             ),
 
-          if (apt != null && apt['status'] != 'not_started')
-            InsightCard(
-              title: 'Aptitude check',
-              icon: Icons.psychology_rounded,
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  SmallChip('${apt['status']}'),
-                  const SizedBox(width: 6),
-                  SmallChip('${apt['correct'] ?? 0}/${apt['questions_asked'] ?? 0} correct'),
-                  const SizedBox(width: 6),
-                  SmallChip('level ${apt['current_level'] ?? '-'}'),
-                ]),
-                if ((apt['result'] as String?)?.isNotEmpty == true) ...[
-                  const SizedBox(height: 8),
-                  Text('${apt['result']}', style: const TextStyle(fontSize: 13, height: 1.45)),
-                ],
-              ]),
-            ),
+          if (apt != null && apt['status'] != 'not_started') _AptitudeCard(apt: apt),
 
           if (booking != null)
             InsightCard(
@@ -518,22 +511,50 @@ class _Insights extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('${booking['title']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
                 const SizedBox(height: 3),
-                Text(Ist.full(Ist.fromTimestamp(booking['startAt']) ?? DateTime.now()),
-                    style: const TextStyle(fontSize: 13)),
+                Text(Ist.full(Ist.fromTimestamp(booking['startAt']) ?? DateTime.now()), style: const TextStyle(fontSize: 13)),
                 const SizedBox(height: 10),
-                Row(children: [
-                  _ReminderDot(done: booking['reminded24'] == true, label: '24 h'),
-                  const SizedBox(width: 8),
-                  _ReminderDot(done: booking['reminded1'] == true, label: '1 h'),
+                Wrap(spacing: 8, runSpacing: 6, children: [
+                  _ReminderDot(done: booking['reminded24'] == true, label: '24 h reminder'),
+                  _ReminderDot(done: booking['reminded1'] == true, label: '1 h reminder'),
+                  _ReminderDot(
+                    done: booking['calendarSync'] == 'ok',
+                    label: booking['calendarSync'] == 'ok' ? 'In Google Calendar' : 'Calendar sync off',
+                  ),
                 ]),
-                if (booking['calendarUrl'] != null)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
+                Wrap(spacing: 4, children: [
+                  if (booking['calendarEventLink'] != null)
+                    TextButton.icon(
+                      icon: const Icon(Icons.calendar_month_rounded, size: 15),
+                      label: const Text('Open event'),
+                      onPressed: () => launchUrl(Uri.parse(booking['calendarEventLink'] as String), mode: LaunchMode.externalApplication),
+                    ),
+                  if (booking['calendarUrl'] != null)
+                    TextButton.icon(
                       icon: const Icon(Icons.open_in_new_rounded, size: 15),
-                      label: const Text('Google Calendar'),
-                      onPressed: () =>
-                          launchUrl(Uri.parse(booking['calendarUrl'] as String), mode: LaunchMode.externalApplication),
+                      label: const Text('Student\'s calendar link'),
+                      onPressed: () => launchUrl(Uri.parse(booking['calendarUrl'] as String), mode: LaunchMode.externalApplication),
+                    ),
+                ]),
+              ]),
+            )
+          else
+            _BookCard(leadId: leadId),
+
+          _AssignCard(leadId: leadId, assignedUid: d['assignedUid'] as String?, assignedTo: d['assignedTo'] as String?, lang: d['assignedLang'] as String?),
+
+          if (contacts.length > 1 || (contacts.isNotEmpty && contacts.first['relation'] != 'self') || (d['studentName'] as String?)?.isNotEmpty == true)
+            InsightCard(
+              title: 'People on this admission',
+              icon: Icons.groups_rounded,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if ((d['studentName'] as String?)?.isNotEmpty == true)
+                  Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('🎓 Student: ${d['studentName']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                for (final c in contacts)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '${relationLabels[c['relation']] ?? c['relation'] ?? 'Contact'}: ${c['name'] ?? ''}${(c['phone'] as String?)?.isNotEmpty == true ? ' · ${c['phone']}' : ''} · ${sourceLabels[c['channel']] ?? c['channel'] ?? ''}',
+                      style: const TextStyle(fontSize: 12.8),
                     ),
                   ),
               ]),
@@ -552,12 +573,9 @@ class _Insights extends StatelessWidget {
                         padding: const EdgeInsets.only(bottom: 6),
                         child: RichText(
                           text: TextSpan(
-                            style: const TextStyle(fontSize: 13, height: 1.45),
+                            style: TextStyle(fontSize: 13, height: 1.45, fontFamily: 'Jakarta', color: context.scheme.onSurface),
                             children: [
-                              TextSpan(
-                                text: '${_pretty(e.key)}: ',
-                                style: TextStyle(fontWeight: FontWeight.w700, color: context.scheme.onSurface),
-                              ),
+                              TextSpan(text: '${_pretty(e.key)}: ', style: TextStyle(fontWeight: FontWeight.w700, color: context.scheme.onSurface)),
                               TextSpan(text: '${e.value}', style: TextStyle(color: context.scheme.onSurfaceVariant)),
                             ],
                           ),
@@ -566,6 +584,8 @@ class _Insights extends StatelessWidget {
                 ],
               ),
             ),
+
+          _LogTouchCard(leadId: leadId, me: me),
         ],
       ),
     );
@@ -578,9 +598,304 @@ class _Insights extends StatelessWidget {
 
   static String _channelIcon(String? c) => switch (c) {
         'whatsapp' => '🟢',
+        'telegram' => '✈️',
+        'instagram' => '📸',
         'call' => '📞',
         _ => '🌐',
       };
+}
+
+class _Bar extends StatelessWidget {
+  const _Bar(this.label, this.value, this.max, this.color);
+  final String label;
+  final Object? value;
+  final num max;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = (value as num?) ?? 0;
+    final frac = max == 0 ? 0.0 : (v / max).clamp(0, 1).toDouble();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(children: [
+        SizedBox(width: 78, child: Text(label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600))),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(value: frac, minHeight: 7, color: color, backgroundColor: color.withValues(alpha: 0.12)),
+          ),
+        ),
+        SizedBox(width: 44, child: Text('${v > 0 ? '+' : ''}$v', textAlign: TextAlign.right, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700))),
+      ]),
+    );
+  }
+}
+
+class _AptitudeCard extends StatelessWidget {
+  const _AptitudeCard({required this.apt});
+  final Map<String, dynamic> apt;
+
+  @override
+  Widget build(BuildContext context) {
+    final answers = ((apt['answers'] as List?) ?? const []).whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+    const levels = ['', 'easy', 'medium', 'hard'];
+    return InsightCard(
+      title: 'Aptitude check',
+      icon: Icons.psychology_rounded,
+      accent: AppTheme.ai,
+      trailing: Text('scored on server', style: TextStyle(fontSize: 10.5, color: context.scheme.onSurfaceVariant)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          SmallChip('${apt['status']}'.replaceAll('_', ' ')),
+          SmallChip('${apt['correct'] ?? 0}/${answers.isEmpty ? (apt['status'] == 'done' ? 4 : 0) : answers.length} correct'),
+          if (apt['points'] != null) SmallChip('${apt['points']}/11 points'),
+          if (apt['band'] != null) SmallChip('${apt['band']}', color: AppTheme.ai),
+        ]),
+        if (answers.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final a in answers)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (a['correct'] == true ? AppTheme.success : AppTheme.hot).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${a['correct'] == true ? '✓' : '✗'} ${a['id']} · ${levels[((a['level'] as num?)?.toInt() ?? 2).clamp(1, 3).toInt()]} · picked ${a['picked']}',
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+          ]),
+        ],
+        if ((apt['result'] as String?)?.isNotEmpty == true) ...[
+          const SizedBox(height: 8),
+          Text('${apt['result']}', style: const TextStyle(fontSize: 13, height: 1.45)),
+        ],
+      ]),
+    );
+  }
+}
+
+class _DuplicateCard extends StatelessWidget {
+  const _DuplicateCard({required this.leadId, required this.otherId, required this.reason});
+  final String leadId;
+  final String otherId;
+  final String reason;
+
+  @override
+  Widget build(BuildContext context) {
+    return InsightCard(
+      title: 'Possible duplicate',
+      icon: Icons.call_merge_rounded,
+      accent: AppTheme.warm,
+      child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: Repo.watchLead(otherId),
+        builder: (context, snap) {
+          final o = snap.data?.data() ?? const <String, dynamic>{};
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(reason, style: context.texts.bodyMedium?.copyWith(fontSize: 13)),
+            const SizedBox(height: 6),
+            Text('Other lead: ${o['name'] ?? otherId}${o['phone'] != null ? ' · ${o['phone']}' : ''} · ${(o['sources'] as List?)?.join(', ') ?? ''}',
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              FilledButton.icon(
+                icon: const Icon(Icons.call_merge_rounded, size: 16),
+                label: const Text('Same person: merge'),
+                onPressed: () => _run(context, () => Repo.merge(otherId, leadId), 'Merged into one timeline'),
+              ),
+              OutlinedButton(
+                onPressed: () => _run(context, () => Repo.dismissDuplicate(leadId, otherId), 'Kept as two people'),
+                child: const Text('Different people'),
+              ),
+            ]),
+          ]);
+        },
+      ),
+    );
+  }
+}
+
+Future<void> _run(BuildContext context, Future<void> Function() job, String ok) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await job();
+    messenger.showSnackBar(SnackBar(content: Text('✅ $ok')));
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
+  }
+}
+
+class _CallbackCard extends StatelessWidget {
+  const _CallbackCard({required this.callback, this.phone});
+  final Map<String, dynamic> callback;
+  final String? phone;
+
+  @override
+  Widget build(BuildContext context) {
+    final kind = callback['kind'] == 'meet' ? 'Video meeting' : 'Phone call';
+    final at = Ist.fromTimestamp(callback['startAt']);
+    final brief = '${callback['brief'] ?? ''}';
+    return InsightCard(
+      title: 'Talk-to-a-human request',
+      icon: callback['kind'] == 'meet' ? Icons.videocam_rounded : Icons.phone_callback_rounded,
+      accent: AppTheme.human,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(at == null ? '$kind · call back as soon as possible' : '$kind · ${Ist.full(at)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        if (brief.isNotEmpty) ...[const SizedBox(height: 6), Text('“$brief”', style: const TextStyle(fontSize: 13, height: 1.45))],
+        if (phone != null && phone!.isNotEmpty)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(onPressed: () => launchUrl(Uri.parse('tel:+91$phone')), icon: const Icon(Icons.call_rounded, size: 16), label: Text('Call +91 $phone')),
+          ),
+      ]),
+    );
+  }
+}
+
+class _CallTaskCard extends StatelessWidget {
+  const _CallTaskCard({required this.leadId, required this.task, required this.phone, required this.me});
+  final String leadId;
+  final Map<String, dynamic> task;
+  final String? phone;
+  final String me;
+
+  @override
+  Widget build(BuildContext context) {
+    return InsightCard(
+      title: 'Call task from the follow-up engine',
+      icon: Icons.phone_in_talk_rounded,
+      accent: AppTheme.hot,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${task['reason'] ?? ''}', style: const TextStyle(fontSize: 13, height: 1.45)),
+        if ((task['script'] as String?)?.isNotEmpty == true) ...[
+          const SizedBox(height: 6),
+          Text('Say: “${task['script']}”', style: TextStyle(fontSize: 12.5, height: 1.45, color: context.scheme.onSurfaceVariant)),
+        ],
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, children: [
+          if (phone != null && phone!.isNotEmpty)
+            FilledButton.icon(onPressed: () => launchUrl(Uri.parse('tel:+91$phone')), icon: const Icon(Icons.call_rounded, size: 16), label: const Text('Call now')),
+          OutlinedButton(onPressed: () => _logDialog(context, leadId, me, 'call'), child: const Text('Log the call')),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _BookCard extends StatelessWidget {
+  const _BookCard({required this.leadId});
+  final String leadId;
+
+  @override
+  Widget build(BuildContext context) {
+    return InsightCard(
+      title: 'Book a demo for them',
+      icon: Icons.event_rounded,
+      child: StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+        stream: Repo.watchSlots('demo'),
+        builder: (context, snap) {
+          final slots = (snap.data ?? const []).take(6).toList();
+          if (slots.isEmpty) {
+            return Text('No open demo slots. Admin → Demo data → Demo-class slots.', style: context.texts.bodySmall?.copyWith(fontSize: 12.5));
+          }
+          return Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final s in slots)
+              ActionChip(
+                label: Text('${s.data()['courseId'] ?? ''} · ${Ist.full(Ist.fromTimestamp(s.data()['startAt']) ?? DateTime.now())}', style: const TextStyle(fontSize: 11.5)),
+                onPressed: () => _run(context, () => Repo.book(leadId, s.id), 'Demo booked'),
+              ),
+          ]);
+        },
+      ),
+    );
+  }
+}
+
+class _AssignCard extends StatelessWidget {
+  const _AssignCard({required this.leadId, this.assignedUid, this.assignedTo, this.lang});
+  final String leadId;
+  final String? assignedUid;
+  final String? assignedTo;
+  final String? lang;
+
+  @override
+  Widget build(BuildContext context) {
+    return InsightCard(
+      title: 'Counsellor',
+      icon: Icons.assignment_ind_rounded,
+      trailing: lang == null ? null : SmallChip('by language: $lang'),
+      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: TeamService.watchTeam(),
+        builder: (context, snap) {
+          final team = snap.data?.docs ?? const [];
+          final known = team.any((t) => t.id == assignedUid);
+          return Row(children: [
+            Expanded(
+              child: DropdownButton<String>(
+                isExpanded: true,
+                value: known ? assignedUid : null,
+                hint: Text(assignedTo?.isNotEmpty == true ? assignedTo! : 'Not assigned yet', style: const TextStyle(fontSize: 13)),
+                underline: const SizedBox.shrink(),
+                items: [
+                  for (final t in team)
+                    DropdownMenuItem(
+                      value: t.id,
+                      child: Text(
+                        '${t.data()['name'] ?? t.data()['email'] ?? 'Counsellor'} · ${((t.data()['languages'] as List?) ?? const ['en']).join('/')}',
+                        style: const TextStyle(fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: (uid) {
+                  if (uid != null) _run(context, () => Repo.assign(leadId, uid), 'Re-assigned');
+                },
+              ),
+            ),
+          ]);
+        },
+      ),
+    );
+  }
+}
+
+class _LogTouchCard extends StatelessWidget {
+  const _LogTouchCard({required this.leadId, required this.me});
+  final String leadId;
+  final String me;
+
+  @override
+  Widget build(BuildContext context) {
+    return InsightCard(
+      title: 'Log something that happened outside the app',
+      icon: Icons.edit_note_rounded,
+      child: Wrap(spacing: 8, runSpacing: 8, children: [
+        OutlinedButton.icon(onPressed: () => _logDialog(context, leadId, me, 'call'), icon: const Icon(Icons.call_rounded, size: 16), label: const Text('Phone call')),
+        OutlinedButton.icon(onPressed: () => _logDialog(context, leadId, me, 'instagram'), icon: const Icon(Icons.camera_alt_outlined, size: 16), label: const Text('Instagram DM')),
+        OutlinedButton.icon(onPressed: () => _logDialog(context, leadId, me, 'walkin'), icon: const Icon(Icons.storefront_rounded, size: 16), label: const Text('Visit')),
+      ]),
+    );
+  }
+}
+
+Future<void> _logDialog(BuildContext context, String leadId, String me, String channel) async {
+  final c = TextEditingController();
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(channel == 'call' ? 'Log a phone call' : channel == 'instagram' ? 'Log an Instagram DM' : 'Log a visit'),
+      content: TextField(controller: c, autofocus: true, maxLines: 3, decoration: const InputDecoration(hintText: 'What was said / what happens next')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+      ],
+    ),
+  );
+  if (ok == true && c.text.trim().isNotEmpty) await Repo.logTouch(leadId, channel: channel, note: c.text.trim(), me: me);
+  c.dispose();
 }
 
 class _ReminderDot extends StatelessWidget {
@@ -590,13 +905,10 @@ class _ReminderDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = done ? AppTheme.human : context.scheme.onSurfaceVariant;
+    final c = done ? AppTheme.success : context.scheme.onSurfaceVariant;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(999)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(done ? Icons.check_circle_rounded : Icons.schedule_rounded, size: 13, color: c),
         const SizedBox(width: 5),

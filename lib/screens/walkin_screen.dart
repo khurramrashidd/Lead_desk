@@ -64,6 +64,8 @@ class _WalkInScreenState extends State<WalkInScreen> {
         assignedTo: me,
         status: 'engaged',
         extra: {
+          'assignedUid': AuthService.user?.uid,
+          'assignedManually': true,
           'score': 55,
           'temperature': 'warm',
           'courseInterest': _course,

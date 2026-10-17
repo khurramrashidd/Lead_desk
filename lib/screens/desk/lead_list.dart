@@ -2,11 +2,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_theme.dart';
+import '../../services/auth_service.dart';
 import '../../services/repo.dart';
 import '../../utils/ist.dart';
 import '../../widgets/lead_widgets.dart';
 
-enum LeadFilter { all, hot, needsHuman, followUpDue, demoBooked }
+enum LeadFilter { all, mine, hot, needsHuman, followUpDue, demoBooked }
 
 /// The live queue of enquiries. Newest activity first, merged duplicates hidden.
 class LeadList extends StatefulWidget {
@@ -34,7 +35,7 @@ class _LeadListState extends State<LeadList> {
     final q = _query.trim().toLowerCase();
     if (q.isNotEmpty) {
       final hay = [
-        d['name'], d['nameLatin'], d['phone'], d['city'],
+        d['name'], d['nameLatin'], d['phone'], d['city'], d['assignedTo'], d['studentName'],
         ...((d['aliases'] as List?)?.cast<String>() ?? const <String>[]),
         ...((d['summary'] as List?)?.cast<String>() ?? const <String>[]),
       ].whereType<String>().join(' ').toLowerCase();
@@ -43,6 +44,8 @@ class _LeadListState extends State<LeadList> {
     switch (_filter) {
       case LeadFilter.all:
         return true;
+      case LeadFilter.mine:
+        return d['assignedUid'] != null && d['assignedUid'] == AuthService.user?.uid;
       case LeadFilter.hot:
         return d['temperature'] == 'hot';
       case LeadFilter.needsHuman:
@@ -142,6 +145,7 @@ class _LeadListState extends State<LeadList> {
 
   String _label(LeadFilter f) => switch (f) {
         LeadFilter.all => 'All',
+        LeadFilter.mine => '👤 Mine',
         LeadFilter.hot => '🔥 Hot',
         LeadFilter.needsHuman => '🙋 Needs you',
         LeadFilter.followUpDue => '⏰ Due',
@@ -264,7 +268,9 @@ class _LeadTile extends StatelessWidget {
                         Wrap(spacing: 5, runSpacing: 5, children: [
                           TempChip(temp),
                           for (final s in sources.take(2)) SmallChip(sourceLabels[s] ?? s),
-                          if (aliases.isNotEmpty) const SmallChip('🔗 merged', color: AppTheme.ai),
+                          if (aliases.isNotEmpty || d['mergedFromIds'] != null) const SmallChip('🔗 merged', color: AppTheme.ai),
+                          if (d['seed'] == true) const SmallChip('sample'),
+                          if ((d['assignedTo'] as String?)?.isNotEmpty == true) SmallChip('👤 ${d['assignedTo']}'),
                           for (final o in objections.take(2)) SmallChip(objectionLabels[o] ?? o, color: AppTheme.warm),
                         ]),
                       ],

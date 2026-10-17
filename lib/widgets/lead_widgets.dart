@@ -14,13 +14,39 @@ const objectionLabels = {
 };
 
 const sourceLabels = {
-  'web': '🌐 Web',
+  'web': '🌐 Web chat',
   'qr': '🔳 QR',
   'whatsapp': '🟢 WhatsApp',
+  'telegram': '✈️ Telegram',
   'instagram': '📸 Instagram',
-  'form': '📝 Form',
+  'form': '📝 Website form',
+  'googleform': '🧾 Google Form',
   'walkin': '🚶 Walk-in',
   'call': '📞 Call',
+};
+
+const playbookLabels = {
+  'human_callback': '🙋 Human call-back',
+  'pause_call': '⏸ Stop & call once',
+  'post_demo': '📅 After-demo check-in',
+  'invite_parent': '👨‍👩‍👧 Invite parent',
+  'fees_emi': '💰 EMI / scholarship',
+  'job_fear': '😟 Placement reassurance',
+  'flexible_batch': '⏰ Flexible batch',
+  'trust_demo': '🤝 Meet the trainer',
+  'online_option': '📍 Online option',
+  'hot_nudge': '🔥 Hot nudge',
+  'warm_nudge': '🌤 Warm nudge',
+  'cold_revive': '❄️ Gentle revive',
+};
+
+const relationLabels = {
+  'self': 'Student',
+  'parent': 'Parent',
+  'guardian': 'Guardian',
+  'sibling': 'Sibling',
+  'friend': 'Friend',
+  'other': 'Other',
 };
 
 const statusLabels = {
@@ -189,7 +215,7 @@ class InsightCard extends StatelessWidget {
               child: Text(title.toUpperCase(),
                   style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 0.9, color: c)),
             ),
-            if (trailing != null) trailing!,
+            ?trailing,
           ]),
           const SizedBox(height: 10),
           child,

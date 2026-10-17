@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 import 'firebase_options.dart';
+import 'l10n.dart';
 import 'screens/admin_screen.dart';
 import 'screens/auth/auth_gate.dart';
 import 'screens/chat/prospect_chat_screen.dart';
@@ -24,6 +25,7 @@ Future<void> main() async {
   if (restored == null) {
     await FirebaseAuth.instance.signInAnonymously(); // students chat without an account
   }
+  await L10n.load();
   runApp(const LeadDeskApp());
 }
 
@@ -37,7 +39,7 @@ class LeadDeskApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeMode,
       builder: (context, mode, _) => MaterialApp(
-        title: 'SechTummit Trainers · AI Lead Desk',
+        title: 'SechTummit Trainers · AI admissions counsellor',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),

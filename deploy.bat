@@ -15,5 +15,5 @@ if not exist functions\.env (
 if /I "%~1"=="hosting" (
   call firebase deploy --only hosting
 ) else (
-  call firebase deploy --only functions,firestore
+  call firebase deploy --only functions,firestore --force
 )

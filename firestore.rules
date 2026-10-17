@@ -31,6 +31,8 @@ service cloud.firestore {
       allow update: if isAdmin()
                     || (request.auth.uid == uid && isOwnerEmail() && request.resource.data.role == 'admin')
                     || (request.auth.uid == uid && request.resource.data.role == resource.data.role);
+      // approved staff can see the team list (names + languages) for assignment
+      allow list: if isCounsellor();
       allow delete: if isAdmin();
     }
 
@@ -52,7 +54,16 @@ service cloud.firestore {
     // ---------- Institute data ----------
     match /kb/{doc}     { allow read: if signedIn();     allow write: if isAdmin(); }
     match /slots/{doc}  { allow read: if signedIn();     allow write: if isAdmin(); }
-    match /config/{doc} { allow read, write: if isCounsellor(); }
+    // API keys and channel tokens: admins only. Demo clock and AI health: any approved counsellor.
+    match /config/{doc} {
+      allow read: if isCounsellor() && !(doc in ['ai', 'channels']) || isAdmin();
+      allow write: if isAdmin() || (isCounsellor() && doc == 'demo');
+    }
     match /events/{doc} { allow read: if isCounsellor(); allow write: if false; } // written by Cloud Functions only
+    match /alerts/{doc} {
+      allow read: if isCounsellor();
+      allow update: if isCounsellor() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create, delete: if false; // written by Cloud Functions only
+    }
   }
 }

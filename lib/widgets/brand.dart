@@ -270,7 +270,7 @@ class GradientText extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ShaderMask(
         shaderCallback: (bounds) => (gradient ??
-                const LinearGradient(colors: [Color(0xFF818CF8), Color(0xFFC4B5FD), Color(0xFFFBBF24)]))
+                const LinearGradient(colors: [Color(0xFF5EEAD4), Color(0xFFFFB38A), Color(0xFFFF6B4A)]))
             .createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
         blendMode: BlendMode.srcIn,
         child: Text(text, style: style.copyWith(color: Colors.white)),

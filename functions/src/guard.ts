@@ -10,7 +10,7 @@ const NEGATION = /\b(no|not|don't|dont|doesn't|cannot|can't|never|won't|unable)\
 const GUARANTEE =
   /guarantee|guaranteed|assured job|assured placement|100\s*%\s*(placement|job)|sure[- ]shot job|पक्की नौकरी|नौकरी पक्की|गारंटी|हमखास|नक्की नोकरी|खात्रीशीर नोकरी/i;
 const DISCOUNT = /discount|concession|\bwaiver\b|छूट|डिस्काउंट|सवलत|सूट/i;
-const CURRENCY_BEFORE = /(₹|rs\.?|inr|रु\.?)\s*$/i;
+const CURRENCY_BEFORE = /(₹|\brs\.?|\binr|रु\.?)\s*$/i;
 const CURRENCY_AFTER = /^\s*(\/-|rupees|rupee|₹|रुपये|रुपए|रुपया)/i;
 const PERCENT_AFTER = /^\s*(%|percent|per cent|प्रतिशत|टक्के)/i;
 
@@ -58,7 +58,7 @@ export function findNumbers(sentence: string): FoundNumber[] {
     const unit = (m[3] ?? "").toLowerCase();
     if (unit === "k" || unit === "thousand" || unit === "हजार" || unit === "हज़ार") value *= 1000;
     if (unit === "lakh" || unit === "lac" || unit === "लाख") value *= 100000;
-    const before = s.slice(Math.max(0, idx - 5), idx);
+    const before = s.slice(Math.max(0, idx - 8), idx);
     const after = s.slice(idx + m[0].length, idx + m[0].length + 10);
     if (PERCENT_AFTER.test(after)) {
       out.push({ value, kind: "percent", raw: m[0] });

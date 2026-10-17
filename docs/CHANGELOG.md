@@ -2,6 +2,31 @@
 
 Newest first. Earlier history is in the git log.
 
+## v7 — fixed build, server-side intelligence, real calendar, fresh UI
+
+**Why it would not run before:** 38 unresolved git merge-conflict blocks were committed in four
+Flutter files (site, sections, demo hub, site widgets), and the last commit was only half applied
+(missing `Repo.requestCallback`, `cloud_functions` not in pubspec, Cloud Functions failing to compile
+on `LeadContact`/`telegram`/`googleform`, callables never exported). All fixed; `npm test` → 14 passing.
+
+**Backend**
+- AI pool: Gemini keys first, then free **Groq** and **OpenRouter**; Groq Whisper transcribes voice notes for text-only fallbacks.
+- **Aptitude check scored on the server** from a question bank (adaptive levels, bands, tap-to-answer).
+- **Explainable lead score** (rules + AI read) with reasons.
+- **Next-best-action engine** with objection playbooks, quiet hours, WhatsApp 24 h window, cadence and call tasks.
+- **Google Calendar** events for every booking (service account, no key file).
+- **Assignment by language** + hot-lead alerts.
+- One `api` HTTPS function for admin/desk actions (no extra Flutter packages), `metaWebhook` (WhatsApp + Instagram),
+  `telegramWebhook`, `intakeWebhook` (Google Forms), `callWebhook` (telephony), channel simulators, 30 sample leads.
+- Guard false positive fixed ("covers 120 km" was read as Rs 120); Guard now also checks suggested messages and follow-ups.
+- Firestore rules: API keys and channel tokens readable by admins only.
+
+**App**
+- Fresh design: ink + teal + coral palette, Plus Jakarta Sans, rebuilt website.
+- Website and chat in **English / हिंदी / मराठी**; website reads the live knowledge base.
+- Desk: score breakdown, aptitude answers, duplicate merge buttons, call tasks, re-assign, contacts, booking for a lead, logging calls/DMs, 🧪 simulator, 🔔 alerts, "Mine" filter.
+- Admin in tabs: Demo, Team (languages), AI engine (Gemini/Groq/OpenRouter), Channels (WhatsApp, Telegram, Instagram, Calendar, Google Form script, telephony), Knowledge base.
+
 ## v6 — build fixes + a guard so this class of bug cannot ship again
 
 **Fixed (this is what was stopping `flutter run`):**

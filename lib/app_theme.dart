@@ -3,31 +3,39 @@ import 'package:flutter/services.dart';
 
 /// The design system for the whole product: colours, type, spacing, elevation.
 ///
-/// Two families live together on purpose:
-///  * **Institute** (navy + amber) — the SechTummit Trainers public website.
-///  * **Product** (indigo + violet) — AI Lead Desk: chat, counsellor desk, admin.
+/// One fresh palette for the whole product: deep ink, teal and a coral call to action,
+/// with Plus Jakarta Sans (bundled in assets/fonts). Devanagari falls back to Noto.
 class AppTheme {
   AppTheme._();
 
   // ----------------------------------------------------------------- palette
-  /// Product brand (matches the app icon gradient).
-  static const indigo = Color(0xFF4F46E5);
-  static const indigoDeep = Color(0xFF4338CA);
-  static const violet = Color(0xFF7C3AED);
-  static const seed = indigo; // kept for older call sites
+  // v7 "fresh" palette: deep ink + teal (trust, counselling) + coral (energy, calls to action).
+  // The old names are kept so every screen picks up the new look without renaming.
 
-  /// Institute brand (public website).
-  static const navy = Color(0xFF0B1F3A);
-  static const navySoft = Color(0xFF14315A);
-  static const amber = Color(0xFFF59E0B);
-  static const amberDeep = Color(0xFFD97706);
+  /// Primary (teal). Was indigo.
+  static const indigo = Color(0xFF0E7C6B);
+  static const indigoDeep = Color(0xFF0A5C50);
+  /// Bright teal used at the end of the brand gradient.
+  static const violet = Color(0xFF16A898);
+  static const seed = indigo;
+  static const primary = indigo;
+
+  /// Ink (headings, hero backgrounds). Was navy.
+  static const navy = Color(0xFF0B1220);
+  static const navySoft = Color(0xFF17233A);
+  static const ink = navy;
+
+  /// Coral accent for the main call to action. Was amber.
+  static const amber = Color(0xFFFF6B4A);
+  static const amberDeep = Color(0xFFE4502E);
+  static const coral = amber;
 
   /// Status + meaning.
   static const hot = Color(0xFFE11D48);
   static const warm = Color(0xFFF59E0B);
   static const cold = Color(0xFF64748B);
   static const ai = Color(0xFF7C3AED);
-  static const human = Color(0xFF059669);
+  static const human = Color(0xFF2563EB);
   static const guard = Color(0xFFDC2626);
   static const success = Color(0xFF059669);
   static const info = Color(0xFF0284C7);
@@ -40,7 +48,12 @@ class AppTheme {
   static const heroGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF0B1F3A), Color(0xFF14315A), Color(0xFF2B2A7A)],
+    colors: [Color(0xFF0B1220), Color(0xFF0D2530), Color(0xFF0E3B3A)],
+  );
+  static const coralGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFFF8A4C), Color(0xFFFF5A5F)],
   );
 
   // ----------------------------------------------------------------- metrics
@@ -79,23 +92,23 @@ class AppTheme {
       seedColor: indigo,
       brightness: brightness,
     ).copyWith(
-      primary: isDark ? const Color(0xFF9D96FF) : indigo,
-      secondary: isDark ? const Color(0xFFFBBF24) : amberDeep,
-      surface: isDark ? const Color(0xFF12131C) : Colors.white,
-      surfaceContainerLowest: isDark ? const Color(0xFF0C0D14) : Colors.white,
-      surfaceContainerLow: isDark ? const Color(0xFF14151F) : const Color(0xFFFAFAFD),
-      surfaceContainer: isDark ? const Color(0xFF181925) : const Color(0xFFF4F4F9),
-      surfaceContainerHigh: isDark ? const Color(0xFF1E1F2D) : const Color(0xFFEFEFF6),
-      surfaceContainerHighest: isDark ? const Color(0xFF252637) : const Color(0xFFE9E9F2),
-      outlineVariant: isDark ? const Color(0xFF2E3042) : const Color(0xFFE2E3EC),
+      primary: isDark ? const Color(0xFF3DD6C2) : indigo,
+      secondary: isDark ? const Color(0xFFFF8A6B) : amberDeep,
+      surface: isDark ? const Color(0xFF111827) : Colors.white,
+      surfaceContainerLowest: isDark ? const Color(0xFF0A0F1A) : Colors.white,
+      surfaceContainerLow: isDark ? const Color(0xFF0F1623) : const Color(0xFFF8FAFA),
+      surfaceContainer: isDark ? const Color(0xFF151D2B) : const Color(0xFFF1F4F5),
+      surfaceContainerHigh: isDark ? const Color(0xFF1B2433) : const Color(0xFFEAEFF0),
+      surfaceContainerHighest: isDark ? const Color(0xFF232D3E) : const Color(0xFFE2E8EA),
+      outlineVariant: isDark ? const Color(0xFF263042) : const Color(0xFFE1E6E8),
       error: const Color(0xFFDC2626),
     );
 
-    final base = ThemeData(colorScheme: scheme, useMaterial3: true);
+    final base = ThemeData(colorScheme: scheme, useMaterial3: true, fontFamily: 'Jakarta');
     final text = _typography(base.textTheme, scheme);
 
     return base.copyWith(
-      scaffoldBackgroundColor: isDark ? const Color(0xFF0C0D14) : const Color(0xFFF7F7FB),
+      scaffoldBackgroundColor: isDark ? const Color(0xFF0A0F1A) : const Color(0xFFF5F7F8),
       textTheme: text,
       splashFactory: InkSparkle.splashFactory,
       visualDensity: VisualDensity.standard,
@@ -122,7 +135,7 @@ class AppTheme {
       dividerTheme: DividerThemeData(color: scheme.outlineVariant, thickness: 1, space: 1),
       inputDecorationTheme: InputDecorationThemeData(
         filled: true,
-        fillColor: isDark ? const Color(0xFF181925) : const Color(0xFFF4F4F9),
+        fillColor: isDark ? const Color(0xFF151D2B) : const Color(0xFFF3F6F7),
         hintStyle: TextStyle(color: scheme.onSurfaceVariant.withValues(alpha: 0.8)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(

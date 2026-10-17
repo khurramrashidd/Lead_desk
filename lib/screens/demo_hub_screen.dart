@@ -50,28 +50,21 @@ class DemoHubScreen extends StatelessWidget {
     (
       Icons.admin_panel_settings_rounded,
       'Admin console',
-<<<<<<< HEAD
-      'Approve counsellors, edit the knowledge base, load demo data, print QR codes.',
-=======
       'AI keys and models, every channel, the knowledge base, demo data and QR codes.',
->>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
       '/admin',
       AppTheme.amberDeep,
     ),
   ];
 
   static const _script = [
-    ('1', 'Scan and speak', 'A judge scans the QR on screen and sends a Marathi voice note. Asha replies in Marathi in seconds.'),
-    ('2', 'Watch the desk', 'The lead appears live with a score, a three-line summary and the objections detected.'),
-    ('3', 'Try to break it', 'Demand a 50% discount or a job guarantee. The Guard blocks the invented claim and rewrites the reply.'),
-    ('4', 'One person, one timeline', 'Submit the form as "Rahul Patil", then chat as "राहुल पाटील" — the two merge.'),
-    ('5', 'Take over', 'Tap Take over on the phone. Asha stops instantly and your reply lands in the judge\'s chat.'),
-    ('6', 'No lead forgotten', 'Hit ⏩ Fast-forward 1 day — reminders and follow-ups fire with their reasons.'),
-<<<<<<< HEAD
-=======
-    ('7', 'One admission, three people', 'A father enquires by phone, the student walks in, a friend messages on Telegram — still one lead, with every contact listed.'),
-    ('8', 'When counselling is not enough', 'Ask for a human: Asha takes name, phone, email and a one-line brief, then books a real call or video meeting slot.'),
->>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
+    ('1', 'Ask the real question', 'Open the website chat (or scan the QR / message the Telegram bot) and send: "I\'m a commerce graduate with a two-year gap — can I really become a developer?" — or a Hinglish / Marathi voice note. Asha answers in the same language and register.'),
+    ('2', 'Adaptive aptitude check', 'Say yes to the 2-minute check. Four tap-to-answer questions get harder after a right answer and easier after a wrong one; the server scores them, then Asha recommends one course with an honest reason.'),
+    ('3', 'Real demo booking', 'Pick a slot: seats are reserved in a transaction, the event lands in the institute\'s Google Calendar, and 24 h / 1 h reminders are scheduled.'),
+    ('4', 'Try to break it', 'Say "my friend got 30% off, give me the same or I join elsewhere". The Guard blocks any amount, percentage or job guarantee that is not in the knowledge base.'),
+    ('5', 'One person, one timeline', 'Desk → 🧪 Simulate: run preset 1 (Rahul Patil, website form) then 2 (राहुल पाटल on WhatsApp, +91 98765-43210) and 3 (his father calls) — one lead, every contact listed.'),
+    ('6', 'The desk', 'Every lead with an explainable score, a three-line summary, objections, a suggested message, the next best action with its reason, and one-tap Take over.'),
+    ('7', 'No lead forgotten', '⏩ Fast-forward 1 day: reminders and objection-based follow-ups fire on the right channel, inside WhatsApp\'s 24 h window, never in quiet hours.'),
+    ('8', 'Where admissions come from', 'Reports: conversion by source, counsellor and objection.'),
   ];
 
   @override
@@ -97,7 +90,7 @@ class DemoHubScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Eyebrow('Kurukshetra 2026 · PS3', icon: Icons.flag_rounded),
+                  const Eyebrow('Hackathon 2026 · PS3 · AI Lead Desk', icon: Icons.flag_rounded),
                   const SizedBox(height: 14),
                   Text('AI Lead Desk — demo hub',
                       style: (phone ? context.texts.headlineSmall : context.texts.headlineLarge)),
@@ -174,8 +167,6 @@ class DemoHubScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 28),
                   SurfaceCard(
-<<<<<<< HEAD
-=======
                     accent: AppTheme.indigo,
                     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       const IconBadge(icon: Icons.fact_check_outlined, color: AppTheme.indigo, size: 40),
@@ -196,7 +187,6 @@ class DemoHubScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   SurfaceCard(
->>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
                     accent: AppTheme.warm,
                     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       const IconBadge(icon: Icons.info_outline_rounded, color: AppTheme.warm, size: 40),
@@ -207,14 +197,9 @@ class DemoHubScreen extends StatelessWidget {
                           const SizedBox(height: 5),
                           Text(
                             'SechTummit Trainers is a stand-in brand for the demo. Courses, fees, partner names and student '
-<<<<<<< HEAD
-                            'stories on the website are sample content, editable in Admin. Telephony and Instagram DMs — '
-                            'the optional parts of the statement — are not built; Instagram leads are tracked with a tagged link.',
-=======
                             'stories are sample content, editable in Admin. Outbound telephony is not built — a counsellor '
                             'logs the call instead. Instagram DMs need Meta approval; until then the bio link measures the '
                             'source and DMs are logged on the desk.',
->>>>>>> e64e53d (fix: repair escaped interpolation in callback card, clear all analyzer issues)
                             style: context.texts.bodyMedium?.copyWith(fontSize: 13.2),
                           ),
                         ]),

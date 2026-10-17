@@ -84,6 +84,16 @@ const T: Record<string, Record<Lang, string>> = {
     hi: "मैं आपको सिर्फ़ सही जानकारी देना चाहती हूँ, इसलिए हमारे काउंसलर जल्द ही यह कन्फ़र्म करेंगे। तब तक कोर्स के बारे में और कुछ पूछना है?",
     mr: "मला तुम्हाला फक्त अचूक माहितीच द्यायची आहे, म्हणून आमचे काउन्सेलर लवकरच हे कन्फर्म करतील. तोपर्यंत कोर्सबद्दल अजून काही विचारायचं आहे का?",
   },
+  nudge: {
+    en: "Hi! Just checking in — do you have any questions about the course or the free demo class? I'm happy to help.",
+    hi: "नमस्ते! बस पूछना था — कोर्स या फ्री डेमो क्लास के बारे में कोई सवाल है? मैं मदद के लिए यहाँ हूँ।",
+    mr: "नमस्कार! फक्त विचारायचं होतं — कोर्स किंवा मोफत डेमो क्लासबद्दल काही प्रश्न आहेत का? मी मदत करायला इथे आहे.",
+  },
+  callBooked: {
+    en: "✅ Booked: a counsellor will {kind} you on {when}. You'll get a reminder before it.",
+    hi: "✅ बुक हो गया: हमारे काउंसलर {when} पर आपको {kind} करेंगे। पहले रिमाइंडर मिलेगा।",
+    mr: "✅ बुक झालं: आमचे काउन्सेलर {when} ला तुम्हाला {kind} करतील. आधी आठवण मिळेल.",
+  },
   busy: {
     en: "Thanks for your message! Our counsellor will reply in a few minutes.",
     hi: "आपके मैसेज के लिए धन्यवाद! हमारे काउंसलर कुछ ही मिनट में जवाब देंगे।",

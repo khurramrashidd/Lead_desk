@@ -72,7 +72,9 @@ class MessageBubble extends StatelessWidget {
 
     String label = '';
     if (!prospectView) {
-      if (role == 'ai') label = automatic ? '✨ Asha · ${_kind(meta['kind'])}' : '✨ Asha (AI)';
+      if (role == 'ai') {
+        label = automatic ? '✨ Asha · ${_kind(meta['kind'])}${meta['delivered'] == false ? ' · not delivered: ${meta['note'] ?? ''}' : ''}' : '✨ Asha (AI)';
+      }
       if (role == 'counsellor') label = '🧑 ${meta['by'] ?? 'Counsellor'}';
       if (role == 'user') label = _channelLabel(channel);
     } else if (role == 'counsellor') {
@@ -164,6 +166,8 @@ class MessageBubble extends StatelessWidget {
 
   static String _channelLabel(String? c) => switch (c) {
         'whatsapp' => '🟢 WhatsApp',
+        'telegram' => '✈️ Telegram',
+        'googleform' => '🧾 Google Form',
         'form' => '📝 Website form',
         'walkin' => '🚶 Walk-in',
         'call' => '📞 Call',

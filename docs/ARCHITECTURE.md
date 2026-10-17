@@ -6,7 +6,7 @@ Use this page in the mentor round. GitHub draws the diagrams automatically.
 
 1. **Every channel lands in one place.** WhatsApp, the web chat (QR code), the website form, Instagram bio link and walk-ins all create a *lead* in Cloud Firestore.
 2. **One AI brain answers everyone.** A Cloud Function runs "Asha", our AI counsellor on Google Gemini. Same brain on every channel, so the same person always gets the same answer.
-3. **A Guard checks every reply** against the institute's knowledge base, so the AI can never invent a fee, discount or job guarantee.
+3. **The server decides what matters**: aptitude scoring, lead score, follow-up timing/channel and calendar booking are computed in code, not by the model. **A Guard checks every reply** against the institute's knowledge base, so the AI can never invent a fee, discount or job guarantee.
 4. **Identity merge** recognises that *Rahul Patil* (form, 098765 43210) and *राहुल पाटील* (WhatsApp, +91 98765 43210) are one person.
 5. **No lead is forgotten.** A heartbeat every 5 minutes sends demo reminders and next-best-action follow-ups, outside quiet hours.
 6. **Counsellors work from a live desk** (Flutter, Android + web): score, 3-line summary, objections, suggested message, one-tap take-over.
@@ -39,13 +39,15 @@ flowchart LR
       BRAIN["Asha: AI counsellor"]
       GUARD["Guard"]
       MERGE["Identity merge"]
-      HB["Heartbeat every 5 min"]
-      HOOK["WhatsApp webhook"]
+      HB["Heartbeat every 5 min<br/>next-best-action engine"]
+      API["api: admin, simulators,<br/>merge, assign, book"]
+      HOOK["metaWebhook · telegramWebhook<br/>intakeWebhook · callWebhook"]
       STAFF["Staff approval"]
     end
   end
 
-  GEM["Google Gemini API"]
+  GEM["Gemini → Groq → OpenRouter<br/>(free key pool)"]
+  CAL["Google Calendar"]
   META["Meta WhatsApp Cloud API"]
 
   QR --> CHAT
@@ -63,6 +65,8 @@ flowchart LR
   BRAIN --> MERGE --> FS
   HB --> FS
   HB --> META
+  BRAIN --> CAL
+  APP --> API
   BRAIN --> META
   FS -- "new staff" --> STAFF
 ```

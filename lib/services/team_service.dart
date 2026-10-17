@@ -28,6 +28,10 @@ class TeamService {
         'roleChangedAt': FieldValue.serverTimestamp(),
       });
 
+  /// Languages a counsellor counsels in (en / hi / mr). Leads are assigned by language.
+  static Future<void> setLanguages(String uid, List<String> langs) =>
+      _users.doc(uid).set({'languages': langs}, SetOptions(merge: true));
+
   static Future<void> approve(String uid) => setRole(uid, Roles.counsellor);
   static Future<void> reject(String uid) => setRole(uid, Roles.rejected);
 

@@ -9,6 +9,7 @@ import '../../services/team_service.dart';
 import '../../utils/ist.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/brand.dart';
+import '../../widgets/simulator.dart';
 import '../auth/account_sheet.dart';
 import '../auth/auth_gate.dart';
 import 'activity_feed.dart';
@@ -170,10 +171,17 @@ class _DeskScreenState extends State<DeskScreen> {
             ),
       actions: [
         if (!compact) const Padding(padding: EdgeInsets.only(right: 4), child: Center(child: IstClock())),
-        if (compact) const Center(child: IstClock(compact: true)),
+
+        IconButton(
+          tooltip: 'Simulate an enquiry (WhatsApp, Instagram, call, form…)',
+          icon: const Icon(Icons.science_outlined),
+          onPressed: () => showSimulator(context, onOpen: _open),
+        ),
+        _AlertsButton(onOpen: _open),
         const _TimeMachineButton(),
         if (StaffScope.isAdmin(context)) const _AdminButton(),
-        IconButton(
+        if (!compact)
+          IconButton(
           tooltip: context.isDark ? 'Light mode' : 'Dark mode',
           icon: Icon(context.isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
           onPressed: () => LeadDeskApp.themeMode.value = context.isDark ? ThemeMode.light : ThemeMode.dark,
@@ -401,6 +409,79 @@ class _TimeMachineButton extends StatelessWidget {
         PopupMenuItem(value: 48, child: ListTile(leading: Icon(Icons.fast_forward), title: Text('Fast-forward 2 days'), dense: true)),
         PopupMenuItem(value: 0, child: ListTile(leading: Icon(Icons.restore), title: Text('Reset to real time'), dense: true)),
       ],
+    );
+  }
+}
+
+/// Hot-lead alerts for the signed-in counsellor (raised by the backend when a lead turns hot).
+class _AlertsButton extends StatefulWidget {
+  const _AlertsButton({required this.onOpen});
+  final ValueChanged<String> onOpen;
+
+  @override
+  State<_AlertsButton> createState() => _AlertsButtonState();
+}
+
+class _AlertsButtonState extends State<_AlertsButton> {
+  final _seen = <String>{};
+  bool _primed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = AuthService.user?.uid;
+    if (uid == null) return const SizedBox.shrink();
+    return StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+      stream: Repo.watchAlerts(uid),
+      builder: (context, snap) {
+        final all = snap.data ?? const [];
+        final unread = all.where((a) => a.data()['read'] != true).toList();
+        // Pop a snackbar for alerts that arrive while the desk is open.
+        if (snap.hasData) {
+          final fresh = unread.where((a) => !_seen.contains(a.id)).toList();
+          _seen.addAll(all.map((a) => a.id));
+          if (_primed && fresh.isNotEmpty) {
+            final a = fresh.first;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('${a.data()['title'] ?? 'Hot lead'}'),
+                action: SnackBarAction(label: 'Open', onPressed: () => widget.onOpen('${a.data()['leadId']}')),
+              ));
+            });
+          }
+          _primed = true;
+        }
+        return PopupMenuButton<String>(
+          tooltip: 'Hot-lead alerts',
+          icon: Badge(
+            isLabelVisible: unread.isNotEmpty,
+            label: Text('${unread.length}'),
+            backgroundColor: AppTheme.hot,
+            child: const Icon(Icons.notifications_none_rounded),
+          ),
+          onSelected: (id) {
+            final a = all.firstWhere((x) => x.id == id);
+            Repo.markAlertRead(id);
+            widget.onOpen('${a.data()['leadId']}');
+          },
+          itemBuilder: (_) => all.isEmpty
+              ? [const PopupMenuItem<String>(enabled: false, child: Text('No alerts yet. Hot leads assigned to you appear here.'))]
+              : [
+                  for (final a in all.take(12))
+                    PopupMenuItem<String>(
+                      value: a.id,
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(a.data()['read'] == true ? Icons.done_rounded : Icons.local_fire_department_rounded,
+                            color: a.data()['read'] == true ? null : AppTheme.hot),
+                        title: Text('${a.data()['title'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text('${a.data()['body'] ?? ''}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                ],
+        );
+      },
     );
   }
 }
