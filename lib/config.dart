@@ -22,4 +22,4 @@ String siteLink() => publicBaseUrl();
 
 /// Shown in the Admin title bar: if you do not see this after `deploy hosting`, the browser is
 /// still showing the old version (press Ctrl+Shift+R).
-const kBuildLabel = 'build r6 · 17 Oct';
+const kBuildLabel = 'build r7 · 17 Oct';

@@ -41,10 +41,20 @@ class _MasterDashboardState extends State<MasterDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
       backgroundColor: context.scheme.surfaceContainerLow,
       appBar: AppBar(
         title: const Text('Master dashboard'),
+        bottom: const TabBar(
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: [
+            Tab(icon: Icon(Icons.groups_rounded, size: 18), text: 'People & enquiries'),
+            Tab(icon: Icon(Icons.school_rounded, size: 18), text: 'Registered students'),
+          ],
+        ),
         actions: [
           TextButton.icon(
             onPressed: () => Navigator.of(context).pushNamed('/desk'),
@@ -54,7 +64,8 @@ class _MasterDashboardState extends State<MasterDashboard> {
           const SizedBox(width: 8),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      body: TabBarView(children: [
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: _stream,
         builder: (context, snap) {
           if (snap.hasError) return Center(child: Text('Could not load: ${snap.error}'));
@@ -85,6 +96,9 @@ class _MasterDashboardState extends State<MasterDashboard> {
           );
         },
       ),
+        const _StudentsTab(),
+      ]),
+    ),
     );
   }
 
@@ -242,6 +256,11 @@ class Person {
     }
     mail(d['email']);
     mail(d['studentEmail']);
+    // Details typed into the enrolment form belong to the same person too.
+    final form = ((d['enrollment'] as Map?)?['form'] as Map?) ?? const {};
+    phone(form['phone']);
+    phone(form['whatsapp']);
+    mail(form['email']);
     for (final c in ((d['contacts'] as List?) ?? const []).whereType<Map>()) {
       phone(c['phone']);
       mail(c['email']);
@@ -372,7 +391,7 @@ class Person {
 
   /// The most important enrolment state across this person's enquiries.
   String get payment {
-    const order = ['receipt_received', 'verified', 'awaiting_receipt', 'awaiting_details', 'choosing_course', 'rejected'];
+    const order = ['receipt_received', 'verified', 'awaiting_receipt', 'otp', 'confirm', 'form', 'awaiting_details', 'choosing_course', 'rejected', 'cancelled'];
     final all = _ds.map((d) => '${(d['enrollment'] as Map?)?['status'] ?? ''}').where((s) => s.isNotEmpty).toList();
     for (final s in order) {
       if (all.contains(s)) return s;
@@ -759,5 +778,129 @@ class _PersonView extends StatelessWidget {
         ]),
       ),
     ]);
+  }
+}
+
+
+/// Students whose payment was verified and course allotted, with their admission ID.
+class _StudentsTab extends StatefulWidget {
+  const _StudentsTab();
+
+  @override
+  State<_StudentsTab> createState() => _StudentsTabState();
+}
+
+class _StudentsTabState extends State<_StudentsTab> {
+  final _stream = FirebaseFirestore.instance.collection('students').orderBy('allottedAt', descending: true).limit(500).snapshots();
+  final _search = TextEditingController();
+  String _course = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  static const _cols = [
+    ('admissionId', 'Admission ID'),
+    ('name', 'Name'),
+    ('courseName', 'Course'),
+    ('mode', 'Mode'),
+    ('batch', 'Batch'),
+    ('startMonth', 'Start'),
+    ('phone', 'Mobile'),
+    ('whatsapp', 'WhatsApp'),
+    ('email', 'Email'),
+    ('city', 'City'),
+    ('qualification', 'Qualification'),
+    ('dob', 'Date of birth'),
+    ('guardianName', 'Parent / guardian'),
+    ('guardianPhone', "Parent's mobile"),
+    ('address', 'Address'),
+    ('amount', 'Fee paid (₹)'),
+    ('allottedBy', 'Allotted by'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _stream,
+      builder: (context, snap) {
+        if (snap.hasError) return Center(child: Text('Could not load: ${snap.error}'));
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+        final all = snap.data!.docs.map((d) => d.data()).toList();
+        final courses = {for (final s in all) '${s['courseName'] ?? ''}'}..remove('');
+        final q = _search.text.trim().toLowerCase();
+        final rows = all.where((s) {
+          if (_course.isNotEmpty && s['courseName'] != _course) return false;
+          if (q.isEmpty) return true;
+          return _cols.any((c) => '${s[c.$1] ?? ''}'.toLowerCase().contains(q));
+        }).toList();
+        return ListView(padding: const EdgeInsets.all(16), children: [
+          Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            SizedBox(
+              width: 300,
+              child: TextField(
+                controller: _search,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Admission ID, name, phone…', isDense: true),
+              ),
+            ),
+            ChoiceChip(label: const Text('All courses'), selected: _course.isEmpty, onSelected: (_) => setState(() => _course = '')),
+            for (final c in courses) ChoiceChip(label: Text(c), selected: _course == c, onSelected: (_) => setState(() => _course = c)),
+            Text('${rows.length} registered', style: context.texts.bodySmall),
+            TextButton.icon(
+              onPressed: () {
+                String c(Object? v) => '"${'${v ?? ''}'.replaceAll('"', '""')}"';
+                final csv = [
+                  _cols.map((x) => c(x.$2)).join(','),
+                  for (final s in rows) _cols.map((x) => c(s[x.$1])).join(','),
+                ].join('\n');
+                Clipboard.setData(ClipboardData(text: csv));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied ${rows.length} students: paste into Excel or Google Sheets')));
+              },
+              icon: const Icon(Icons.table_view_rounded, size: 17),
+              label: const Text('Copy as CSV'),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          if (rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(child: Text('No registered students yet. They appear here when you verify a payment and allot a course.', style: context.texts.bodyMedium, textAlign: TextAlign.center)),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                color: context.scheme.surface,
+                borderRadius: BorderRadius.circular(AppTheme.r16),
+                border: Border.all(color: context.scheme.outlineVariant),
+              ),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingTextStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+                  columns: [
+                    for (final c in _cols) DataColumn(label: Text(c.$2)),
+                    const DataColumn(label: Text('Allotted on')),
+                  ],
+                  rows: [
+                    for (final s in rows)
+                      DataRow(cells: [
+                        for (final c in _cols)
+                          DataCell(
+                            c.$1 == 'address'
+                                ? SizedBox(width: 220, child: Text('${s[c.$1] ?? ''}', maxLines: 2, overflow: TextOverflow.ellipsis))
+                                : Text('${s[c.$1] ?? ''}', style: TextStyle(fontWeight: c.$1 == 'admissionId' ? FontWeight.w800 : FontWeight.w400)),
+                          ),
+                        DataCell(Text(Ist.fromTimestamp(s['allottedAt']) == null ? '' : Ist.full(Ist.fromTimestamp(s['allottedAt'])!))),
+                      ]),
+                  ],
+                ),
+              ),
+            ),
+        ]);
+      },
+    );
   }
 }

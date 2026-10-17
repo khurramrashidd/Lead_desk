@@ -66,6 +66,8 @@ service cloud.firestore {
     // WhatsApp / Telegram / Google Form links behind the website QR codes: public, admin-edited.
     match /config/public { allow read: if true; }
     match /events/{doc} { allow read: if isCounsellor(); allow write: if false; } // written by Cloud Functions only
+    // Registered students (admission IDs): created when an admin verifies a payment.
+    match /students/{doc} { allow read: if isCounsellor(); allow write: if false; }
     match /stats/{doc}  { allow read: if isCounsellor(); allow write: if false; } // sharded counters, Cloud Functions only
     // PS3 self-test runs: an admin queues one, a Cloud Function runs it and writes the proof.
     match /selftests/{doc} { allow read: if isCounsellor(); allow create, update: if isAdmin(); allow delete: if false; }

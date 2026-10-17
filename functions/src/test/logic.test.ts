@@ -458,3 +458,25 @@ test("chat flow: language picks, restart words, enroll words, UPI link", async (
     "upi://pay?pa=inst%40okhdfc&pn=Sech%20Tummit&am=10.00&cu=INR&tn=Registration%20Java",
   );
 });
+
+test("enrolment form: compulsory fields are validated", async () => {
+  const { validate, parseDob, validMobile, validEmail, bothModes } = await import("../enroll_form");
+  const kb: KnowledgeBase = { instituteName: "S", city: "Pune", courses: [{ id: "fsj", name: "Full Stack Java Developer", durationWeeks: 24, mode: "hybrid", feeInr: 65000 }] };
+  const st = { form: { phone: "9876543210" } };
+  assert.equal(validMobile("+91 98765-43210"), "9876543210");
+  assert.equal(validMobile("12345"), undefined);
+  assert.equal(validMobile("5876543210"), undefined);
+  assert.equal(validEmail(" Neha@Gmail.com "), "neha@gmail.com");
+  assert.equal(validEmail("neha@gmail"), undefined);
+  assert.equal(parseDob("5/8/2004"), "05-08-2004");
+  assert.equal(parseDob("31-02-2004"), undefined);
+  assert.equal(parseDob("01-01-2024"), undefined); // too young
+  assert.equal(validate("name", "Neha Joshi", undefined, st, kb, "en").value, "Neha Joshi");
+  assert.equal(validate("name", "नेहा जोशी", undefined, st, kb, "hi").value, "नेहा जोशी");
+  assert.equal(validate("name", "12345", undefined, st, kb, "en").error, "bad_name");
+  assert.equal(validate("whatsapp", "", "form:same", st, kb, "en").value, "9876543210");
+  assert.equal(validate("address", "Pune", undefined, st, kb, "en").error, "bad_text");
+  assert.equal(validate("course", "", "form:course:fsj", st, kb, "en").courseId, "fsj");
+  assert.equal(validate("batch", "शाम", undefined, st, kb, "hi").value, "Evening");
+  assert.ok(bothModes("hybrid") && bothModes("Online + classroom") && !bothModes("online"));
+});

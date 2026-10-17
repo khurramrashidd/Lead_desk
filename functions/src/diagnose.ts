@@ -244,6 +244,20 @@ export async function runDiagnosis(): Promise<Check[]> {
     // informational only
   }
 
+  // ---- Email (Gmail app password) for enrolment codes and admission confirmations ----
+  try {
+    const { emailConfig } = await import("./email");
+    const ec = await emailConfig();
+    checks.push({
+      name: "Email (Gmail) for enrolment codes",
+      ok: ec.user && ec.pass ? true : null,
+      detail: ec.user && ec.pass ? `Sending from ${ec.user}. Use Admin → Channels → Email → Save & test to confirm.` : "Not set up: the email code step is skipped and confirmations go only to chat/WhatsApp/Telegram.",
+      fix: ec.user && ec.pass ? undefined : "Admin → Channels → Email: your Gmail address + a 16-letter App password (Google Account → Security → 2-Step Verification → App passwords).",
+    });
+  } catch {
+    // informational only
+  }
+
   const meta = status.meta as Record<string, any> | undefined;
   checks.push({
     name: "WhatsApp: last call received from Meta",

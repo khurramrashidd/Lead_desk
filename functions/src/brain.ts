@@ -560,7 +560,7 @@ export async function counsel(leadId: string, depth = 0): Promise<BrainResult | 
   if (gate?.rerun) return depth < 2 ? counsel(leadId, depth + 1) : null;
   if (gate?.reply) {
     await leadRef.set({ lastMessageAt: FieldValue.serverTimestamp(), lastChannel: msg.channel }, { merge: true });
-    return { reply: gate.reply.text, channel: gate.reply.channel, options: gate.reply.options, lang: gate.reply.lang, msgId: gate.reply.msgId, qr: gate.reply.qr };
+    return { reply: gate.reply.text, channel: gate.reply.channel, options: gate.reply.options, lang: gate.reply.lang, msgId: gate.reply.msgId, qr: gate.reply.qr, askContact: gate.reply.askContact };
   }
 
   // ---- Intake questions (who / name / contact / course) before counselling ----
@@ -760,7 +760,7 @@ export async function counsel(leadId: string, depth = 0): Promise<BrainResult | 
   const enr = (lead as Lead & { enrollment?: Enrollment }).enrollment;
   const recommended = out.recommendation?.course_id || lead.recommendation?.courseId;
   const enrollOptions =
-    !shownQuestion && recommended && (!enr || enr.status === "rejected" || enr.status === "choosing_course") && !lead.simulated && !lead.selftest && !lead.burst && !lead.seed
+    !shownQuestion && recommended && (!enr || ["rejected", "choosing_course", "cancelled"].includes(enr.status)) && !lead.simulated && !lead.selftest && !lead.burst && !lead.seed
       ? [{ id: "enroll:yes", label: ft("enrollBtn", out.language) }]
       : [];
 

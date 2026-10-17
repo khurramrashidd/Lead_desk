@@ -18,7 +18,7 @@ class ChannelsPanel extends StatefulWidget {
 
 class _ChannelsPanelState extends State<ChannelsPanel> {
   final _c = <String, TextEditingController>{
-    for (final k in ['waToken', 'waPhoneId', 'waVerifyToken', 'waBusinessId', 'telegramBotToken', 'igToken', 'igUserId', 'calendarId', 'intakeSecret'])
+    for (final k in ['waToken', 'waPhoneId', 'waVerifyToken', 'waBusinessId', 'smtpUser', 'smtpPass', 'smtpName', 'telegramBotToken', 'igToken', 'igUserId', 'calendarId', 'intakeSecret'])
       k: TextEditingController(),
   };
   bool _loaded = false;
@@ -159,6 +159,31 @@ class _ChannelsPanelState extends State<ChannelsPanel> {
           child: const Text('Save & connect'),
         ),
         status: _status['tg'],
+        onCopy: _snack,
+      ),
+      _Channel(
+        color: const Color(0xFFEA4335),
+        icon: Icons.mail_rounded,
+        title: 'Email (free, via your Gmail): enrolment codes + admission confirmations',
+        steps: '1) Google Account → Security → turn on 2-Step Verification. 2) Search "App passwords" → create one named "Lead Desk" → '
+            'copy the 16 letters. 3) Paste your Gmail address and that app password here → Save & test (a test email arrives in that inbox). '
+            'Without this, the email-code step is skipped and confirmations go only to chat / WhatsApp / Telegram. SMS is not used (paid).',
+        fields: [
+          _field('smtpUser', 'Gmail address'),
+          _field('smtpPass', 'App password (16 letters)', secret: true),
+          _field('smtpName', 'Sender name (e.g. SechTummit Admissions)'),
+        ],
+        copy: const {},
+        action: OutlinedButton(
+          onPressed: _busy
+              ? null
+              : () => _check('mail', () async {
+                    final r = await OpsService.testEmail();
+                    return '${r.ok ? '✅' : '❌'} ${r.detail}';
+                  }),
+          child: const Text('Save & test'),
+        ),
+        status: _status['mail'],
         onCopy: _snack,
       ),
       _Channel(
@@ -333,6 +358,18 @@ class _DiagnoseCardState extends State<DiagnoseCard> {
   String? _error;
   List<Map<String, dynamic>> _checks = const [];
 
+  String? _fixResult;
+
+  Future<void> _fixWhatsApp() async {
+    setState(() => _fixResult = 'Connecting…');
+    try {
+      final r = await OpsService.subscribeWhatsApp('');
+      setState(() => _fixResult = '${r.ok ? '✅' : '❌'} ${r.detail}');
+    } catch (e) {
+      setState(() => _fixResult = '❌ $e');
+    }
+  }
+
   Future<void> _run() async {
     setState(() {
       _running = true;
@@ -374,6 +411,18 @@ class _DiagnoseCardState extends State<DiagnoseCard> {
             style: context.texts.bodySmall?.copyWith(fontSize: 12.5, height: 1.5),
           ),
           if (_error != null) ...[const SizedBox(height: 8), Text('❌ $_error', style: const TextStyle(fontWeight: FontWeight.w600))],
+          if (_checks.any((c) => '${c['name']}'.startsWith('WhatsApp') && c['ok'] == false)) ...[
+            const SizedBox(height: 10),
+            Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              FilledButton.icon(
+                onPressed: _fixWhatsApp,
+                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366)),
+                icon: const Icon(Icons.build_rounded, size: 18),
+                label: const Text('Fix WhatsApp webhook'),
+              ),
+              if (_fixResult != null) Text(_fixResult!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            ]),
+          ],
           for (final c in _checks)
             Padding(
               padding: const EdgeInsets.only(top: 10),

@@ -2,6 +2,21 @@
 
 Newest first. Earlier history is in the git log.
 
+## 17 Oct 2026 (7) — enrolment form, email code, admission IDs, registered students (run `deploy all`)
+
+- **Enroll now → compulsory enrolment form in the chat** (WhatsApp, Telegram, website): name, mobile, WhatsApp,
+  email, date of birth, city, qualification, address, parent/guardian name + mobile, then course choice, mode
+  (online / classroom, only when the course offers both), batch time and start month. Every answer is checked
+  (10-digit Indian mobile, real date, valid email…); known details are one tap; ❌ Cancel any time.
+- **Verification before the QR:** a summary with Confirm / Edit (edit any part), then a **6-digit email code**
+  (free, via your Gmail app password: Admin → Channels → Email). Without Gmail set up the code step is skipped.
+- **Admin allots the course** (the student's choice is pre-selected; any course can be picked) → an **admission ID**
+  (ADM-2026-0001, never repeats) → a record in **Master dashboard → Registered students** → confirmation with the
+  ID on the student's chat, by email and to their WhatsApp number. SMS is not used (paid).
+- Diagnose: **Fix WhatsApp webhook** button, email check.
+- Chat stays open 10 minutes while the form is being filled.
+- New backend package: `nodemailer`.
+
 ## 17 Oct 2026 (6) — enrolment payments, chat sessions, master dashboard (run `deploy all`)
 
 - **Language first** on every new chat: buttons English / हिंदी / मराठी on WhatsApp and Telegram, a

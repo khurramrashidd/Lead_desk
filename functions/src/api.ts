@@ -162,6 +162,12 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
         res.json({ ok: true, detail: `@${info.username ?? "bot"} is live${hook}`, username: info.username ?? "" });
         return;
       }
+      case "checkEmail": {
+        if (!isAdmin(w)) return deny();
+        const { checkEmail } = await import("./email");
+        res.json(await checkEmail());
+        return;
+      }
       case "checkCalendar": {
         if (!isAdmin(w)) return deny();
         const { checkCalendar, clearCalendarCache } = await import("./calendar");

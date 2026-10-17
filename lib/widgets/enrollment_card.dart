@@ -16,6 +16,10 @@ class EnrollmentCard extends StatefulWidget {
   final Map<String, dynamic> enrollment;
 
   static String statusLabel(String s) => switch (s) {
+        'form' => 'Filling the enrolment form',
+        'confirm' => 'Reviewing details',
+        'otp' => 'Verifying email code',
+        'cancelled' => 'Form cancelled',
         'choosing_course' => 'Choosing a course',
         'awaiting_details' => 'Wants to pay: no UPI ID set',
         'awaiting_receipt' => 'QR sent, waiting for receipt',
@@ -57,7 +61,8 @@ class _EnrollmentCardState extends State<EnrollmentCard> {
   void _load() {
     final rid = widget.enrollment['receiptMsgId'] as String?;
     _receipt = rid == null ? null : Repo.message(widget.leadId, rid);
-    _courseId ??= widget.enrollment['courseId'] as String?;
+    final form = (widget.enrollment['form'] as Map?)?.cast<String, dynamic>() ?? const {};
+    _courseId ??= (form['courseId'] ?? widget.enrollment['courseId']) as String?;
     Repo.db.doc('kb/main').get().then((s) {
       final list = ((s.data()?['courses'] as List?) ?? const []).whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
       if (mounted) setState(() => _courses = list);
@@ -101,6 +106,23 @@ class _EnrollmentCardState extends State<EnrollmentCard> {
     final admin = StaffScope.isAdmin(context);
     final at = Ist.fromTimestamp(e['receiptAt']) ?? Ist.fromTimestamp(e['startedAt']);
     final canDecide = admin && (status == 'receipt_received' || status == 'rejected' || status == 'awaiting_receipt');
+    final form = (e['form'] as Map?)?.cast<String, dynamic>() ?? const {};
+    const fields = [
+      ('name', 'Name'),
+      ('phone', 'Mobile'),
+      ('whatsapp', 'WhatsApp'),
+      ('email', 'Email'),
+      ('dob', 'Date of birth'),
+      ('city', 'City'),
+      ('qualification', 'Qualification'),
+      ('address', 'Address'),
+      ('guardianName', 'Parent / guardian'),
+      ('guardianPhone', "Parent's mobile"),
+      ('course', 'Course (student\'s choice)'),
+      ('mode', 'Mode'),
+      ('batch', 'Batch'),
+      ('start', 'Start'),
+    ];
     return InsightCard(
       title: 'Enrolment & payment',
       icon: Icons.currency_rupee_rounded,
@@ -117,6 +139,32 @@ class _EnrollmentCardState extends State<EnrollmentCard> {
           if (e['courseName'] != null) Text('${e['courseName']}', style: const TextStyle(fontSize: 13)),
           if (at != null) Text(Ist.full(at), style: TextStyle(fontSize: 12, color: context.scheme.onSurfaceVariant)),
         ]),
+        if (e['admissionId'] != null) ...[
+          const SizedBox(height: 6),
+          SelectableText('🆔 Admission ID: ${e['admissionId']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+        ],
+        if (form.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Table(
+            columnWidths: const {0: IntrinsicColumnWidth(), 1: FlexColumnWidth()},
+            defaultVerticalAlignment: TableCellVerticalAlignment.top,
+            children: [
+              for (final f in fields)
+                if (form[f.$1] != null)
+                  TableRow(children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12, bottom: 4),
+                      child: Text(f.$2, style: TextStyle(fontSize: 12.5, color: context.scheme.onSurfaceVariant)),
+                    ),
+                    Padding(padding: const EdgeInsets.only(bottom: 4), child: SelectableText('${form[f.$1]}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                  ]),
+            ],
+          ),
+          Text(
+            e['emailVerified'] == true ? '✅ Email verified with a code' : '⚠️ Email not verified${e['note'] != null ? ' (${e['note']})' : ''}',
+            style: TextStyle(fontSize: 12, color: e['emailVerified'] == true ? AppTheme.success : context.scheme.onSurfaceVariant),
+          ),
+        ],
         if (e['verifiedBy'] != null) ...[
           const SizedBox(height: 4),
           Text('Decided by ${e['verifiedBy']}${e['note'] != null ? ' · ${e['note']}' : ''}', style: TextStyle(fontSize: 12, color: context.scheme.onSurfaceVariant)),
@@ -146,8 +194,14 @@ class _EnrollmentCardState extends State<EnrollmentCard> {
             DropdownButtonFormField<String>(
               initialValue: _courses.any((c) => c['id'] == _courseId) ? _courseId : null,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Allot course', isDense: true),
-              items: [for (final c in _courses) DropdownMenuItem(value: '${c['id']}', child: Text('${c['name']}', overflow: TextOverflow.ellipsis))],
+              decoration: const InputDecoration(labelText: 'Allot course (student\'s choice is pre-selected)', isDense: true),
+              items: [
+                for (final c in _courses)
+                  DropdownMenuItem(
+                    value: '${c['id']}',
+                    child: Text('${c['name']}${c['id'] == form['courseId'] ? '  ★ student\'s choice' : ''}', overflow: TextOverflow.ellipsis),
+                  ),
+              ],
               onChanged: (v) => setState(() => _courseId = v),
             ),
           const SizedBox(height: 10),
@@ -156,7 +210,7 @@ class _EnrollmentCardState extends State<EnrollmentCard> {
               onPressed: _busy ? null : () => _decide(true),
               style: FilledButton.styleFrom(backgroundColor: AppTheme.success),
               icon: const Icon(Icons.verified_rounded, size: 18),
-              label: const Text('Verify & allot course'),
+              label: const Text('Verify, allot & create admission ID'),
             ),
             OutlinedButton.icon(
               onPressed: _busy ? null : () => _decide(false),

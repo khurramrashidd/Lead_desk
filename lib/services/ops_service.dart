@@ -66,6 +66,11 @@ class OpsService {
     return (ok: d['ok'] == true, detail: '${d['detail'] ?? ''}', wabaId: '${d['wabaId'] ?? ''}');
   }
 
+  static Future<({bool ok, String detail})> testEmail() async {
+    final d = await Api.call('checkEmail');
+    return (ok: d['ok'] == true, detail: '${d['detail'] ?? ''}');
+  }
+
   static Future<({bool ok, String detail})> testWhatsApp() async {
     final d = await Api.call('checkWhatsApp');
     final extra = [d['name'], d['number']].where((e) => e != null && '$e'.isNotEmpty).join(' · ');
