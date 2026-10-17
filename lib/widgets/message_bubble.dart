@@ -77,10 +77,13 @@ class MessageBubble extends StatelessWidget {
           label = '✨ Asha · ${_kind(meta['kind'])}${meta['delivered'] == false ? ' · not delivered: ${meta['note'] ?? ''}' : ''}';
         } else {
           final extras = [
+            if (meta['kind'] == 'onboarding') '🧾 intake question (${meta['step'] ?? ''})',
             if (meta['cache'] == 'hit') '⚡ instant: same question answered before',
             if (meta['cache'] == 'wait') '⚡ shared one AI call with identical questions',
             if (meta['answeredTogether'] != null) 'answered ${meta['answeredTogether']} messages together',
-            if (meta['fallback'] == true) 'AI busy: auto-retrying',
+            if (meta['offline'] == true) '📚 AI unavailable: answered from the knowledge base, auto-retrying'
+            else if (meta['fallback'] == true) 'AI busy: auto-retrying',
+            if (meta['delivered'] == false) '⚠️ not delivered: ${meta['note'] ?? ''}',
           ];
           label = extras.isEmpty ? '✨ Asha (AI)' : '✨ Asha · ${extras.join(' · ')}';
         }

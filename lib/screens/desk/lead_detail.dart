@@ -333,6 +333,11 @@ class _Insights extends StatelessWidget {
           if (dupOf != null) _DuplicateCard(leadId: leadId, otherId: dupOf, reason: '${d['possibleDuplicateReason'] ?? ''}'),
           if ((d['relatedLeads'] as Map?)?.isNotEmpty == true)
             _LinkedCard(leadId: leadId, me: me, related: (d['relatedLeads'] as Map).cast<String, dynamic>()),
+          if ((_map('ai')?['lastError'] as String?)?.isNotEmpty == true) _AiTroubleCard(ai: _map('ai')!),
+          if (_map('deliveryIssue') != null) _DeliveryCard(issue: _map('deliveryIssue')!),
+          if (_map('onboarding') != null) _IntakeCard(ob: _map('onboarding')!, d: d),
+          if ((d['recentQuestions'] as List?)?.isNotEmpty == true) _QuestionsCard(questions: (d['recentQuestions'] as List).whereType<Map>().map((m) => m.cast<String, dynamic>()).toList()),
+          _HistoryCard(leadId: leadId, d: d, me: me),
           if (d['needsHuman'] == true)
             InsightCard(
               title: 'Needs a human',
@@ -962,6 +967,267 @@ class _ReminderDot extends StatelessWidget {
         Icon(done ? Icons.check_circle_rounded : Icons.schedule_rounded, size: 13, color: c),
         const SizedBox(width: 5),
         Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: c)),
+      ]),
+    );
+  }
+}
+
+
+// ------------------------------------------------- AI trouble / delivery / intake
+/// Asha could not reach any AI provider: the person got a knowledge-base answer and a retry is queued.
+class _AiTroubleCard extends StatelessWidget {
+  const _AiTroubleCard({required this.ai});
+  final Map<String, dynamic> ai;
+
+  @override
+  Widget build(BuildContext context) {
+    final retryAt = Ist.fromTimestamp(ai['retryAt']);
+    final err = '${ai['lastError'] ?? ''}'.split('\n');
+    return InsightCard(
+      title: 'Asha could not reach the AI',
+      icon: Icons.cloud_off_rounded,
+      accent: AppTheme.warm,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          'They got an instant answer from the knowledge base. '
+          '${retryAt != null ? 'Asha retries at ${Ist.time(retryAt)}. ' : ''}Reply from the desk if it is urgent, and check Admin → AI engine → Test.',
+          style: context.texts.bodySmall?.copyWith(fontSize: 12.5),
+        ),
+        const SizedBox(height: 6),
+        for (final line in err.skip(err.length > 1 ? 1 : 0).take(4))
+          Text('• $line', style: context.texts.bodySmall?.copyWith(fontSize: 11.5, fontFamily: 'monospace')),
+      ]),
+    );
+  }
+}
+
+/// The last reply could not be delivered on WhatsApp / Telegram / Instagram, and why.
+class _DeliveryCard extends StatelessWidget {
+  const _DeliveryCard({required this.issue});
+  final Map<String, dynamic> issue;
+
+  @override
+  Widget build(BuildContext context) {
+    final note = '${issue['note'] ?? ''}';
+    final testNumber = note.contains('131030') || note.toLowerCase().contains('allowed list');
+    return InsightCard(
+      title: 'Reply not delivered on ${issue['channel'] ?? 'the channel'}',
+      icon: Icons.mark_chat_unread_outlined,
+      accent: AppTheme.hot,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(note, style: context.texts.bodySmall?.copyWith(fontSize: 12.5, fontFamily: 'monospace')),
+        const SizedBox(height: 6),
+        Text(
+          testNumber
+              ? 'Meta test number: add this person\'s WhatsApp number in Meta → WhatsApp → API Setup → "To" (up to 5 numbers), then reply again.'
+              : 'Check Admin → Channels (token / bot), or call them. The conversation is safe here either way.',
+          style: context.texts.bodySmall?.copyWith(fontSize: 12),
+        ),
+      ]),
+    );
+  }
+}
+
+/// The intake answers: who is writing, the student, contact, course picked.
+class _IntakeCard extends StatelessWidget {
+  const _IntakeCard({required this.ob, required this.d});
+  final Map<String, dynamic> ob;
+  final Map<String, dynamic> d;
+
+  @override
+  Widget build(BuildContext context) {
+    final step = '${ob['step'] ?? ''}';
+    final done = step == 'done';
+    final relation = '${ob['relation'] ?? '-'}';
+    final contact = [ob['phone'], ob['email']].whereType<String>().where((x) => x.isNotEmpty).join(' · ');
+    final course = ob['courseId'] as String?;
+    final rows = <(String, String)>[
+      ('Writing', relation == 'self' ? 'the student' : relation),
+      ('Student', '${ob['studentName'] ?? d['studentName'] ?? '-'}'),
+      ('Student contact', contact.isEmpty ? (d['studentPhone'] as String? ?? 'skipped') : contact),
+      ('Course picked', course ?? (ob['wantsHelp'] == true ? 'wants help choosing' : '-')),
+      if ((ob['firstQuestion'] as String?)?.isNotEmpty == true) ('First asked', '${ob['firstQuestion']}'),
+    ];
+    return InsightCard(
+      title: done ? 'Intake answers' : 'Intake in progress',
+      icon: Icons.assignment_outlined,
+      accent: done ? AppTheme.success : AppTheme.info,
+      trailing: SmallChip(
+        done ? (ob['outcome'] == 'completed' ? 'completed' : 'handed to Asha (${ob['outcome'] ?? ''})') : 'waiting: $step',
+        color: done ? AppTheme.success : AppTheme.info,
+      ),
+      child: Column(children: [
+        for (final r in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(width: 118, child: Text(r.$1, style: context.texts.bodySmall?.copyWith(fontSize: 12))),
+              Expanded(child: Text(r.$2, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.8))),
+            ]),
+          ),
+      ]),
+    );
+  }
+}
+
+/// The latest questions this person asked, in their own words.
+class _QuestionsCard extends StatelessWidget {
+  const _QuestionsCard({required this.questions});
+  final List<Map<String, dynamic>> questions;
+
+  @override
+  Widget build(BuildContext context) {
+    return InsightCard(
+      title: 'Questions asked',
+      icon: Icons.forum_outlined,
+      accent: AppTheme.ai,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final q in questions.reversed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('“', style: TextStyle(color: AppTheme.ai.withValues(alpha: 0.7), fontWeight: FontWeight.w800, fontSize: 16, height: 1)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${q['text'] ?? ''}', style: const TextStyle(fontSize: 13, height: 1.35)),
+                  Text(
+                    '${q['channel'] ?? ''}${Ist.fromTimestamp(q['at']) == null ? '' : ' · ${Ist.relative(Ist.fromTimestamp(q['at']))}'}',
+                    style: context.texts.bodySmall?.copyWith(fontSize: 11),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+      ]),
+    );
+  }
+}
+
+/// Earlier records of the same person or family: any lead sharing a phone or an email
+/// (writer's, student's or another contact's), with the questions they asked.
+class _HistoryCard extends StatefulWidget {
+  const _HistoryCard({required this.leadId, required this.d, required this.me});
+  final String leadId;
+  final Map<String, dynamic> d;
+  final String me;
+
+  @override
+  State<_HistoryCard> createState() => _HistoryCardState();
+}
+
+class _HistoryCardState extends State<_HistoryCard> {
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>? _future;
+  String _key = '';
+
+  List<String> get _phones {
+    final d = widget.d;
+    final all = <String>{
+      for (final p in [d['phone'], d['studentPhone'], ...((d['contactPhones'] as List?) ?? const [])])
+        if (p is String && p.replaceAll(RegExp(r'[^0-9]'), '').length >= 10) p.replaceAll(RegExp(r'[^0-9]'), '').substring(p.replaceAll(RegExp(r'[^0-9]'), '').length - 10),
+    };
+    return all.take(10).toList();
+  }
+
+  List<String> get _emails => <String>{
+        for (final e in [widget.d['email'], widget.d['studentEmail']])
+          if (e is String && e.contains('@')) e.trim().toLowerCase(),
+      }.toList();
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _load() async {
+    final leads = FirebaseFirestore.instance.collection('leads');
+    final queries = <Future<QuerySnapshot<Map<String, dynamic>>>>[
+      if (_phones.isNotEmpty) leads.where('contactPhones', arrayContainsAny: _phones).limit(15).get(),
+      for (final p in _phones.take(3)) leads.where('phone', isEqualTo: p).limit(10).get(),
+      for (final e in _emails) leads.where('email', isEqualTo: e).limit(10).get(),
+      for (final e in _emails) leads.where('studentEmail', isEqualTo: e).limit(10).get(),
+    ];
+    final byId = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    for (final snap in await Future.wait(queries)) {
+      for (final doc in snap.docs) {
+        if (doc.id != widget.leadId) byId[doc.id] = doc;
+      }
+    }
+    final list = byId.values.toList()
+      ..sort((a, b) => ((a.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0).compareTo((b.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0));
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final key = '${_phones.join(',')}|${_emails.join(',')}';
+    if (key != _key) {
+      _key = key;
+      _future = (_phones.isEmpty && _emails.isEmpty) ? Future.value(<QueryDocumentSnapshot<Map<String, dynamic>>>[]) : _load();
+    }
+    final merged = ((widget.d['mergedFromIds'] as List?) ?? const []).length;
+    return FutureBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+      future: _future,
+      builder: (context, snap) {
+        final others = snap.data ?? const [];
+        if (others.isEmpty && merged == 0) return const SizedBox.shrink();
+        return InsightCard(
+          title: 'Earlier records (same phone or email)',
+          icon: Icons.history_rounded,
+          accent: AppTheme.human,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (merged > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('This timeline already includes $merged earlier enquir${merged == 1 ? 'y' : 'ies'} merged into it (same person).',
+                    style: context.texts.bodySmall?.copyWith(fontSize: 12.5)),
+              ),
+            for (final o in others) _row(context, o),
+          ]),
+        );
+      },
+    );
+  }
+
+  Widget _row(BuildContext context, QueryDocumentSnapshot<Map<String, dynamic>> o) {
+    final x = o.data();
+    final mergedInto = x['mergedInto'] as String?;
+    final created = Ist.fromTimestamp(x['createdAt']);
+    final qs = ((x['recentQuestions'] as List?) ?? const []).whereType<Map>().map((m) => '${m['text'] ?? ''}').where((t) => t.isNotEmpty).toList();
+    final summary = ((x['summary'] as List?) ?? const []).map((e) => '$e').toList();
+    final student = (x['studentName'] as String?)?.isNotEmpty == true ? ' · student ${x['studentName']}' : '';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: context.scheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.r12),
+        border: Border.all(color: context.scheme.outlineVariant),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+            child: Text('${x['name'] ?? '(no name)'}$student', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          ),
+          if (mergedInto == null)
+            TextButton(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (ctx) => Scaffold(body: SafeArea(child: LeadDetail(leadId: o.id, me: widget.me, onClose: () => Navigator.of(ctx).pop()))),
+              )),
+              child: const Text('Open'),
+            ),
+        ]),
+        Text(
+          [
+            '${x['firstSource'] ?? ''}',
+            if (created != null) Ist.relative(created),
+            '${x['status'] ?? ''}',
+            if (mergedInto == widget.leadId) 'merged here' else if (mergedInto != null) 'merged elsewhere',
+          ].where((t) => t.isNotEmpty).join(' · '),
+          style: context.texts.bodySmall?.copyWith(fontSize: 11.5),
+        ),
+        if (qs.isNotEmpty || summary.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            qs.isNotEmpty ? 'Asked: ${qs.reversed.take(3).map((q) => '“$q”').join('  ')}' : summary.first,
+            style: context.texts.bodySmall?.copyWith(fontSize: 12, color: context.scheme.onSurface),
+          ),
+        ],
       ]),
     );
   }

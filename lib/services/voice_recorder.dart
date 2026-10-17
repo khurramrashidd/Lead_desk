@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -6,12 +7,14 @@ import 'package:record/record.dart';
 
 import 'audio_bytes.dart';
 
-/// A recorded voice note, ready to send.
+/// A recorded voice note: played back for a check, then sent.
 class VoiceNote {
-  VoiceNote(this.base64, this.mime, this.seconds);
-  final String base64;
+  VoiceNote(this.bytes, this.mime, this.seconds);
+  final Uint8List bytes;
   final String mime;
   final int seconds;
+
+  String get base64 => base64Encode(bytes);
 }
 
 /// Records short voice notes on Android and in the browser (web chat via QR).
@@ -67,7 +70,7 @@ class VoiceRecorder {
     if (path == null || secs < 1) return null;
     final bytes = await readRecordedAudio(path);
     if (bytes.length > 700 * 1024) return null; // Firestore documents must stay under 1 MB
-    return VoiceNote(base64Encode(bytes), _mime, secs);
+    return VoiceNote(bytes, _mime, secs);
   }
 
   Future<void> cancel() async {

@@ -96,8 +96,9 @@ class AiProvider {
   static const kinds = ['gemini', 'groq', 'openrouter'];
 
   static const modelsFor = {
-    'gemini': ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.7-flash', 'gemini-2.5-flash'],
-    'groq': ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
+    // Live models, October 2026 (old names are mapped to these on the server too).
+    'gemini': ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'],
+    'groq': ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'],
     'openrouter': ['openrouter/free'],
   };
 

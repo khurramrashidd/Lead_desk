@@ -4,6 +4,7 @@ import '../app_theme.dart';
 import '../utils/ist.dart';
 import '../utils/responsive.dart';
 import '../widgets/brand.dart';
+import '../widgets/channel_links.dart';
 import '../widgets/site_widgets.dart';
 
 /// One page for judges and mentors: every entry point in the prototype,
@@ -64,13 +65,14 @@ class DemoHubScreen extends StatelessWidget {
   ];
 
   static const _script = [
-    ('1', 'Ask the real question', 'Open the website chat (or scan the QR / message the Telegram bot) and send: "I\'m a commerce graduate with a two-year gap — can I really become a developer?" — or a Hinglish / Marathi voice note. Asha answers in the same language and register.'),
+    ('1', 'Scan and say hi', 'Scan the WhatsApp or Telegram QR below (or open the website chat). Asha asks who the enquiry is for (student / parent / friend), the student\'s name and number or email, then sends the course list as buttons. Pick one and she counsels about it.'),
+    ('1b', 'Ask the real question', 'Send: "I\'m a commerce graduate with a two-year gap — can I really become a developer?", or a Hinglish / Marathi voice note (you can listen to it before sending). Asha answers in the same language and register.'),
     ('2', 'Adaptive aptitude check', 'Say yes to the 2-minute check. Four tap-to-answer questions get harder after a right answer and easier after a wrong one; the server scores them, then Asha recommends one course with an honest reason.'),
     ('3', 'Real demo booking', 'Pick a slot: seats are reserved in a transaction, the event lands in the institute\'s Google Calendar, and 24 h / 1 h reminders are scheduled.'),
     ('4', 'Try to break it', 'Say "my friend got 30% off, give me the same or I join elsewhere". The Guard blocks any amount, percentage or job guarantee that is not in the knowledge base.'),
     ('5', 'One person, one timeline', 'Desk → 🧪 Simulate: run preset 1 (Rahul Patil, website form) then 2 (राहुल पाटल on WhatsApp, +91 98765-43210) and 3 (his father calls) — one lead, every contact listed.'),
     ('6', 'The desk', 'Every lead with an explainable score, a three-line summary, objections, a suggested message, the next best action with its reason, and one-tap Take over.'),
-    ('7', 'No lead forgotten', '⏩ Fast-forward 1 day: reminders and objection-based follow-ups fire on the right channel, inside WhatsApp\'s 24 h window, never in quiet hours.'),
+    ('7', 'No lead forgotten', '⏩ Jump to tomorrow 11 AM: reminders and objection-based follow-ups fire on the right channel, inside WhatsApp\'s 24 h window, never in quiet hours. Someone who stopped halfway through the intake questions gets a nudge too.'),
     ('8', 'Where admissions come from', 'Reports: conversion by source, counsellor and objection.'),
   ];
 
@@ -136,6 +138,13 @@ class DemoHubScreen extends StatelessWidget {
                           ]),
                         ),
                     ],
+                  ),
+                  const SizedBox(height: 36),
+                  Text('Scan to chat with Asha (from your own phone)', style: context.texts.titleMedium),
+                  const SizedBox(height: 14),
+                  const ResponsiveGrid(
+                    minItemWidth: 240,
+                    children: [ChannelQrCard(ChatChannel.whatsapp), ChannelQrCard(ChatChannel.telegram), ChannelQrCard(ChatChannel.form)],
                   ),
                   const SizedBox(height: 36),
                   Text('Three-minute demo route', style: context.texts.titleMedium),

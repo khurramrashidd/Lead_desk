@@ -24,6 +24,7 @@ copy functions\.env.example functions\.env
 ```
 Open `functions\.env` and paste at least one `GEMINI_API_KEY` (free: https://aistudio.google.com).
 Add `GROQ_API_KEY` / `OPENROUTER_API_KEY` too if you have them (free fallbacks).
+Models: `GEMINI_MODEL=gemini-3.6-flash`, `GROQ_MODEL=openai/gpt-oss-120b` (old names are mapped automatically).
 
 ### 2. Every time you get a new zip
 Extract it over the project folder, then:
@@ -34,7 +35,7 @@ Extract it over the project folder, then:
 deploy
 flutter run
 ```
-- `deploy` (= deploy.bat) installs packages, runs the backend tests (**must say `pass 22`**), and deploys the AI brain + Firestore rules. It may ask to enable an API: answer **y**.
+- `deploy` (= deploy.bat) installs packages, runs the backend tests (**must say `pass 30`**), and deploys the AI brain + Firestore rules. It may ask to enable an API: answer **y**.
 - Proof for the judges: Admin → Demo → **Open the self-test** (docs/PROOF.md).
 - Test on your phone (app and web): **docs/TESTING.md**.
 
@@ -66,18 +67,19 @@ See **docs/PROBLEM_STATEMENT_COVERAGE.md** (line by line, honest status), **docs
 asked about by many people, one person asking about many students).
 
 ## 3-minute demo
-Open `/demo` in the app — the judges' hub with every entry point and the route:
-1. Website chat (or Telegram / QR): *"I'm a commerce graduate with a two-year gap — can I really become a developer?"* (or a Hinglish/Marathi voice note).
+Open `/demo` in the app — the judges' hub with every entry point, the QR codes and the route:
+0. Scan the Telegram (or WhatsApp) QR → "Hi" → Asha asks: who is this for → student's name → number/email → course list (buttons) → talks about the course you tap.
+1. Website chat (or Telegram / QR): *"I'm a commerce graduate with a two-year gap — can I really become a developer?"* (or a Hinglish/Marathi voice note: listen to it, then send).
 2. Accept the aptitude check → 4 adaptive tap-to-answer questions → honest recommendation.
 3. Pick a demo slot → event in Google Calendar, reminders scheduled.
 4. *"My friend got 30% off, give me the same"* → the Guard refuses; 🛡 badge on the desk.
 5. Desk → 🧪 Simulate presets 1 → 2 → 3 (Rahul Patil form → राहुल पाटल WhatsApp → father's call) → one lead.
 6. Take over → Asha stops; reply goes out on the lead's channel.
-7. ⏩ +1 day → follow-ups by objection playbook, inside WhatsApp's window, never in quiet hours.
+7. ⏩ Jump to tomorrow 11 AM → follow-ups by objection playbook, inside WhatsApp's window, never in quiet hours.
 8. Reports → conversion by source, counsellor, objection.
 
 ## Honest limitations
-- WhatsApp test numbers only reach a few verified phones; judges use Telegram / web chat / the simulator.
+- WhatsApp with Meta's free test number (+1 555 199 3241): anyone's message reaches the desk, but Asha's replies are delivered only to the (up to 5) numbers added under Meta → API Setup → "To". Add the judges' numbers there, or let them use Telegram / the web chat. Undelivered replies are flagged on the desk with the reason.
 - Instagram DMs need a Professional account + Meta app review for public users; demo uses the simulator (same code path).
 - Telephony is provider-ready (generic call webhook) but no provider account is connected; demo uses the simulator.
 - Students on web chat are anonymous Firebase sessions; clearing the browser starts a new chat (the same person is still merged when they share a phone number).
@@ -110,6 +112,7 @@ Open `/demo` in the app — the judges' hub with every entry point and the route
 | http | reverse-geocoding call | https://pub.dev/packages/http |
 | geolocator | walk-in auto location | https://pub.dev/packages/geolocator |
 | qr_flutter | channel QR codes | https://pub.dev/packages/qr_flutter |
+| audioplayers | playing a voice note back before sending | https://pub.dev/packages/audioplayers |
 | BigDataCloud reverse-geocode client API | GPS → city/area | https://www.bigdatacloud.com |
 | Meta WhatsApp Cloud API | WhatsApp channel | https://developers.facebook.com/docs/whatsapp |
 | Google Calendar event links | "Add to calendar" for demo classes | https://calendar.google.com |

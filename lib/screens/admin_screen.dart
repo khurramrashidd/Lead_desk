@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../app_theme.dart';
 import '../config.dart';
+import '../data/links.dart';
 import '../data/seed.dart';
 import '../services/repo.dart';
 import '../widgets/simulator.dart';
@@ -227,6 +228,9 @@ class _DemoTabState extends State<_DemoTab> {
         help: 'Each link tags its own source, so the reports show which channel really produces admissions. '
             'Put a QR on the projector and let judges scan it.',
         child: Wrap(spacing: 18, runSpacing: 18, children: [
+          _Qr('WhatsApp (Asha)', PublicLinks.current.value.whatsappUrl),
+          _Qr('Telegram bot', PublicLinks.current.value.telegramUrl),
+          _Qr('Google Form', PublicLinks.current.value.formUrl),
           _Qr('Website + chat', siteLink()),
           _Qr('Web chat (QR source)', chatLink('qr')),
           _Qr('Instagram bio link', chatLink('instagram')),
@@ -312,13 +316,17 @@ class _KbEditorState extends State<_KbEditor> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (!_loaded) const LinearProgressIndicator(),
         Container(
-          decoration: BoxDecoration(color: const Color(0xFF0B1220), borderRadius: BorderRadius.circular(AppTheme.r12)),
+          decoration: BoxDecoration(
+            color: context.scheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(AppTheme.r12),
+            border: Border.all(color: context.scheme.outlineVariant),
+          ),
           padding: const EdgeInsets.all(6),
           child: TextField(
             controller: _kb,
             minLines: 14,
             maxLines: 30,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: Color(0xFFE2E8F0), height: 1.5),
+            style: TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: context.scheme.onSurface, height: 1.5),
             decoration: const InputDecoration(filled: false, border: InputBorder.none, contentPadding: EdgeInsets.all(10)),
           ),
         ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../app_theme.dart';
 import '../../main.dart';
 import '../../services/auth_service.dart';
+import '../../services/ops_service.dart';
 import '../../services/repo.dart';
 import '../../services/team_service.dart';
 import '../../utils/ist.dart';
@@ -68,6 +69,7 @@ class _DeskScreenState extends State<DeskScreen> {
       body: switch (_view) {
         DeskView.leads => Column(
             children: [
+              const _AiHealthBanner(),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
                 child: const LiveKpiStrip(compact: true),
@@ -141,6 +143,7 @@ class _DeskScreenState extends State<DeskScreen> {
               children: [
                 _topBar(context, compact: false),
                 const Divider(height: 1),
+                const _AiHealthBanner(),
                 Expanded(child: content),
               ],
             ),
@@ -191,6 +194,46 @@ class _DeskScreenState extends State<DeskScreen> {
           child: _Avatar(onTap: () => showAccountSheet(context)),
         ),
       ],
+    );
+  }
+}
+
+/// Shown on the desk while Asha cannot reach any AI provider (wrong key, retired model, quota).
+class _AiHealthBanner extends StatelessWidget {
+  const _AiHealthBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: OpsService.watchAiHealth(),
+      builder: (context, snap) {
+        final f = (snap.data?.data()?['lastFailure'] as Map?)?.cast<String, dynamic>();
+        final at = Ist.fromTimestamp(f?['at']);
+        if (f == null || at == null || DateTime.now().difference(at).inMinutes > 20) return const SizedBox.shrink();
+        final errors = ((f['errors'] as List?) ?? const []).map((e) => '$e').toList();
+        final first = errors.isEmpty ? '' : errors.first;
+        return Material(
+          color: AppTheme.warm.withValues(alpha: 0.14),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+            child: Row(children: [
+              const Icon(Icons.warning_amber_rounded, color: AppTheme.warm, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Asha could not reach the AI ${Ist.relative(at)}: people get instant knowledge-base answers and automatic retries. '
+                  'Fix it in Admin → AI engine → Test.${first.isEmpty ? '' : '  ($first)'}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (StaffScope.isAdmin(context))
+                TextButton(onPressed: () => Navigator.of(context).pushNamed('/admin'), child: const Text('Open Admin')),
+            ]),
+          ),
+        );
+      },
     );
   }
 }

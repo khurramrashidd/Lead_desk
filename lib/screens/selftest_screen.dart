@@ -1,9 +1,7 @@
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
+import 'dart:async';
 import '../app_theme.dart';
 import '../services/api.dart';
 import '../services/auth_service.dart';

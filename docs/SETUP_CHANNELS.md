@@ -23,7 +23,11 @@ message through exactly the same code path as the real channel.
 2. **Groq**: https://console.groq.com/keys → *Create API Key* (starts with `gsk_`). Also used for free Whisper speech-to-text.
 3. **OpenRouter**: https://openrouter.ai/keys → *Create Key* (starts with `sk-or-`). Model `openrouter/free`.
 4. App → **Admin → AI engine** → pick provider → paste key → **Test** → **Add to pool**. Put Gemini keys first.
-5. Two minutes before judging press **Warm up**.
+   Live models (Oct 2026): Gemini `gemini-3.6-flash` (default), `gemini-3.8-flash`, `gemini-3.5-flash-lite`;
+   Groq `openai/gpt-oss-120b`. Retired names are mapped automatically, but press **Test** on every key:
+   a ❌ there is exactly what made Asha "keep typing".
+5. Two minutes before judging press **Warm up**. If every key fails, Admin → AI engine shows the reasons
+   ("Last time every key failed…") and people still get knowledge-base answers.
 
 You can also put them in `functions\.env` (`GEMINI_API_KEY=key1,key2`, `GROQ_API_KEY=…`, `OPENROUTER_API_KEY=…`) and run `deploy`.
 
@@ -31,7 +35,8 @@ You can also put them in `functions\.env` (`GEMINI_API_KEY=key1,key2`, `GROQ_API
 1. In Telegram open **@BotFather** → `/newbot` → name `SechTummit Admissions` → username ending in `bot`.
 2. Copy the token → **Admin → Channels → Telegram → paste → Save & connect**. It shows `@yourbot is live · webhook set`.
 3. Message the bot from any phone. Asha replies there; the lead appears on the desk with ✈️ Telegram.
-4. Put `https://t.me/<yourbot>` as a QR on your slide.
+4. The website home, ☰ → Contact, the judges' hub (`/demo`) and Admin → Demo already show the Telegram QR
+   (`https://t.me/LeadDeskIndiaBot?start=web`). Change the bot in **Admin → Channels → Public links**.
 
 ## 3. Google Calendar (8 min) — real demo-class bookings
 1. https://console.cloud.google.com → select project **lead-desk-39885** → search **Google Calendar API** → **Enable**.
@@ -56,13 +61,25 @@ Any other tool (Zapier, a landing page) can `POST` JSON to the **Intake URL** wi
 ## 5. WhatsApp (25 min)
 1. https://developers.facebook.com → **My Apps → Create App** → use case **Connect with customers through WhatsApp** → create/choose a business portfolio → **Create app**.
 2. Left menu **WhatsApp → API Setup**: **Generate access token** (copy), copy the **Phone number ID** (not the number).
-3. Under **To**, add your own WhatsApp number (+91…) and verify the code. Test numbers can only message the few numbers you verify here — that is why judges use Telegram/QR web chat.
+3. Under **To**, add your own WhatsApp number (+91…) and verify the code. **Meta's free test number
+   (yours: +1 555 199 3241) receives messages from anyone, but replies are delivered only to the up-to-5
+   numbers in this "To" list.** On judging day add the judges' numbers here (each gets a code to confirm);
+   everyone else: Telegram or the web chat. The desk marks undelivered replies with Meta's reason
+   (`#131030 … not in allowed list`).
 4. App → **Admin → Channels → WhatsApp**: paste token + phone number ID → **Save & test** (✅ Connected).
 5. Meta: **WhatsApp → Configuration → Webhook → Edit**: Callback URL = the **Webhook URL** shown in the app (`…/metaWebhook`), Verify token = the one shown (`leaddesk-verify-123`) → **Verify and save** → **Webhook fields → Manage → messages → Subscribe**.
 6. Send "Hi" from your verified phone to the test number → Asha replies.
 7. Token expires in ~24 h. For judging day make a permanent one: business.facebook.com → Business settings → **System users** → Add (Admin) → **Assign assets** (your app + WhatsApp account, full control) → **Generate token** with `whatsapp_business_messaging`, `whatsapp_business_management` → paste in Admin.
 
 Rule handled for you: free-form replies are allowed only within 24 h of the student's last message. The follow-up engine moves follow-ups inside that window, and when it is closed it creates a **call task** instead of failing silently.
+
+## 5b. Website QR codes, "Talk on WhatsApp / Telegram", intake questions
+- **Admin → Channels → Public links**: WhatsApp number (digits with country code, e.g. `15551993241`),
+  the pre-filled message (`Hi Asha 👋`), the Telegram bot (`LeadDeskIndiaBot`) and the Google Form link.
+  Saving updates every button and QR code at once (Firestore `config/public`, readable by everyone).
+- **Admin → Channels → Intake questions before counselling** (on by default): new WhatsApp, Telegram,
+  Instagram and web chats first answer: who is this for → student's name → mobile/email → course list.
+  Never asked again for that person; never for sample data, simulators or the self-test.
 
 ## 6. Instagram DMs (optional)
 Needs an Instagram **Professional** account. In the same Meta app: **Add product → Instagram → API setup with Instagram login** → add your account → **Generate token** → paste token + Instagram user ID in **Admin → Channels → Instagram** → subscribe the same webhook URL to **messages**. In development mode only accounts added as app testers can DM it. For the demo use **🧪 Simulate → Instagram**.

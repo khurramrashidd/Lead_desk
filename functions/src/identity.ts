@@ -223,6 +223,8 @@ export interface LeadIdentity {
   studentName?: string;
   studentPhone?: string;
   contactPhones?: string[];
+  /** Other emails on the admission (e.g. the student's, given by a parent). */
+  emails?: string[];
   city?: string;
 }
 
@@ -242,11 +244,16 @@ function phonesOf(x: LeadIdentity): Set<string> {
   );
 }
 
+function emailsOf(x: LeadIdentity): Set<string> {
+  return new Set([x.email, ...(x.emails ?? [])].map((e) => (e ?? "").trim().toLowerCase()).filter((e) => e.includes("@")));
+}
+
 export function decideLeadMatch(a: LeadIdentity, b: LeadIdentity): { decision: LeadDecision; similarity: number; reason: string } {
   const pa = phonesOf(a);
   const pb = phonesOf(b);
   const shared = [...pa].filter((p) => pb.has(p));
-  const emailEq = !!a.email && !!b.email && a.email.trim().toLowerCase() === b.email.trim().toLowerCase();
+  const ea = emailsOf(a);
+  const emailEq = [...emailsOf(b)].some((e) => ea.has(e));
   const sa = studentNameOf(a);
   const sb = studentNameOf(b);
   const studentSim = personSimilarity(sa, sb);

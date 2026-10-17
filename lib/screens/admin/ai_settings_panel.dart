@@ -99,6 +99,7 @@ class _AiSettingsPanelState extends State<AiSettingsPanel> {
                   _envRow(context, e, (health['${e['id']}'] as Map?)?.cast<String, dynamic>(), health['lastUsed'] == e['id']),
                 if (providers.isEmpty && _env.isEmpty)
                   Text('No keys yet. Add one below or put GEMINI_API_KEY in functions/.env.', style: TextStyle(color: AppTheme.hot, fontSize: 13)),
+                _lastFailure(context, (health['lastFailure'] as Map?)?.cast<String, dynamic>()),
               ]);
             },
           ),
@@ -178,6 +179,31 @@ class _AiSettingsPanelState extends State<AiSettingsPanel> {
           ),
         ]);
       },
+    );
+  }
+
+  /// Why Asha last could not answer at all (every key failed), so a wrong key or model is obvious.
+  Widget _lastFailure(BuildContext context, Map<String, dynamic>? f) {
+    if (f == null) return const SizedBox.shrink();
+    final at = Ist.fromTimestamp(f['at']);
+    final errors = ((f['errors'] as List?) ?? const []).map((e) => '$e').toList();
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.warm.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppTheme.r12),
+        border: Border.all(color: AppTheme.warm.withValues(alpha: 0.4)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          '⚠️ Last time every key failed${at == null ? '' : ' (${Ist.relative(at)})'}. Asha answered from the knowledge base and retried. '
+          'Fix: press Test on each key; replace any key or model that fails.',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+        ),
+        const SizedBox(height: 6),
+        for (final e in errors.take(6)) Text('• $e', style: context.texts.bodySmall?.copyWith(fontSize: 11.5)),
+      ]),
     );
   }
 

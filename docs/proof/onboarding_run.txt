@@ -1,0 +1,35 @@
+
+=== WEB CHAT (parent, taps chips)
+  ✅ relation chip understood → asks the student's name  — Thank you! What's the student's name?
+  ✅ no second introduction on the web
+  ✅ asks the student's mobile or email, with a Skip chip  — Thanks! Rahul Patil's mobile number or email? It keeps one record for the admission, even if Rahul Patil writes to us later. (or tap Skip)
+  ✅ sends the course list as chips (+ help me choose)  — Python Foundations | Full Stack Java Developer | MERN Full Stack (JavaScript) | Data Science & AI with Python | DevOps & Cloud | Software Testing (Manual + Selenium) | Not sure, help me choose
+  ✅ Asha (AI) answers after the intake  — Yes, many people start exactly there. It takes steady daily practice. What did you study, and have you ever written any 
+  ✅ AI was told the picked course + not to re-ask  — Do NOT ask again who the enquiry is for, the student's name, or their contact details.
+  ✅ lead: relation parent, student Rahul Patil, student email, course fsj  — {"rel":"parent","s":"Rahul Patil","e":"rahul.patil@gmail.com","c":"fsj"}
+  ✅ intake marked done + briefed once
+  ✅ recentQuestions kept for the desk  — ["Full Stack Java Developer"]
+  ✅ next turn: no intake brief again
+
+=== WHATSAPP (real webhook parser; student; taps buttons)
+  ✅ intro + who-is-this question with 3 buttons  — Hi! I'm Asha, admissions counsellor at SechTummit Trainers 👋
+To guide you properly: who is this enquiry for?
+  ✅ delivery failure recorded (WhatsApp not connected offline)  — WhatsApp not connected (Admin → Channels)
+  ✅ button id understood → asks the name  — Great! What's your name?
+  ✅ WhatsApp number already known → skips the phone question → course list  — Got it ✅ Here are our courses 👇 Pick one and I'll tell you about it, or just ask me anything.
+  ✅ typed name replaces the profile name (kept as alias)  — Sneha Kulkarni / Sneha ❤️
+  ✅ list pick → Asha talks about Python Foundations  — Yes, many people start exactly there. It takes steady daily practice. What did you study, and have y
+
+=== TELEGRAM (real update parser; friend; Marathi)
+  ✅ /start → intro in Marathi (Telegram language_code)  — नमस्कार! मी आशा, SechTummit Trainers ची प्रवेश समुपदेशक 👋
+योग्य सल्ला देण्यासाठी सांगा: ही चौकशी कोणासाठी आहे?
+  ✅ friend → asks the friend's name (Marathi)  — मदत करताय, छान! तुमच्या मित्राचं नाव काय?
+  ✅ friend's lead carries the student's phone (for merging with the student later)  — ["9876543210"]
+  ✅ Rahul Patil's two enquiries (parent web + friend Telegram) are one admission  — tg mergedInto=undefined web mergedInto=undefined dup=web1
+
+=== AI OUTAGE (every provider failing)
+  ✅ instant answer from the knowledge base, not endless typing  — Thanks for your message! While I get you a detailed answer: / Here are the fees from our published list: / • Full Stack Java Developer: ₹65,000 (EMI 6 × ₹11,000)
+  ✅ retry scheduled + reason saved for the desk  — All AI providers failed.
+  ✅ when the AI is back, the retry answers properly and clears the error  — Full Stack Java Developer ki fees ₹65,000 hai, aur EMI bhi hai. Aap abhi kya kar
+
+RESULT: 23 passed, 0 failed, trigger errors: 0

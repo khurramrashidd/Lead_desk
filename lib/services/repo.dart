@@ -105,6 +105,7 @@ class Repo {
     String? audioB64,
     String? audioMime,
     String channel = 'web',
+    Map<String, dynamic>? meta,
   }) async {
     await leads.doc(leadId).set({
       'lastInboundAt': FieldValue.serverTimestamp(),
@@ -119,6 +120,7 @@ class Repo {
     if (text != null) msg['text'] = text;
     if (audioB64 != null) msg['audioB64'] = audioB64;
     if (audioMime != null) msg['audioMime'] = audioMime;
+    if (meta != null && meta.isNotEmpty) msg['meta'] = meta;
     await messages(leadId).add(msg);
   }
 

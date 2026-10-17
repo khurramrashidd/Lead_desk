@@ -1,0 +1,13 @@
+MODEL FALLBACK RUN (17 Oct 2026): the real @google/genai SDK request path with a mocked network.
+Old setting GEMINI_MODEL=gemini-3.5-flash (a model that does not exist) and a quota-exhausted live model:
+answered by: gemini-3.5-flash-lite in 38 ms
+calls:
+  gemini-3.6-flash thinking={"thinkingLevel":"MINIMAL"}
+  gemini-3.5-flash-lite thinking={"thinkingLevel":"MINIMAL"}
+PASS: retired model mapped, quota-hit model skipped, same key answered with a live model
+
+gemini-3.8-flash refuses MINIMAL thinking, so it is asked with LOW:
+answered by: gemini-3.8-flash in 36 ms
+calls:
+  gemini-3.8-flash thinking={"thinkingLevel":"LOW"}
+PASS: thinking level chosen per model

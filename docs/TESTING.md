@@ -46,3 +46,9 @@ Every sentence of the problem statement is tested live with evidence. Details: d
 | 11 | Desk → ⏩ **Jump to tomorrow 11 AM** | Reminders and objection-based follow-ups fire, each with its reason |
 | 12 | Desk → Reports | Conversion by source, counsellor, objection |
 | 13 | Send 3 quick messages in a row from the phone | One reply covering all three (desk: "answered 3 messages together") |
+| 14 | Phone: scan the **Telegram QR** on the laptop screen → Start | Asha: "who is this enquiry for?" with buttons → name → number (or 📱 Share my number) → course list → tap a course → Asha talks about it. Desk: "Intake answers" card |
+| 15 | Same on **WhatsApp** (your number must be in Meta's "To" list) | Reply buttons, then a course list; WhatsApp number is not asked again |
+| 16 | Web chat: tap **I'm a parent** → type the student's name → their email | Desk search by that **email** finds the lead; another lead with the same phone/email shows under **Earlier records** |
+| 17 | Web chat: 🎤 → speak → **Stop** → ▶ listen → **Send** (or 🗑) | Note is only sent after you press Send |
+| 18 | Admin → AI engine: disable every key → send a question | Instant answer from the knowledge base (fees/courses), desk banner "Asha could not reach the AI"; re-enable → Asha's full reply follows within minutes |
+| 19 | Website on a phone: ☰ menu | Opens every page (Courses, Batches, Placement, FAQ, Contact & QR…); top bar never disappears; light theme until you switch to dark |

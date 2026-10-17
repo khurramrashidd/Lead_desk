@@ -12,14 +12,16 @@ import { createHash } from "node:crypto";
 import { db, FieldValue, Timestamp, demoNow, logEvent, type AiLock, type AptitudeState, type KnowledgeBase, type Lead, type Message, type Slot } from "./db";
 import { generateJson, type Turn } from "./ai";
 import { checkReply } from "./guard";
-import { formatIst, googleCalendarUrl, normaliseQuestion, t } from "./lang";
-import { resolveIdentity } from "./merge";
+import { formatIst, googleCalendarUrl, normaliseQuestion, respectQuietHours, t } from "./lang";
+import { latinName, resolveIdentity } from "./merge";
+import { advanceOnboarding, nudgeText, onboardingBrief, type ObOption, type OnboardingState } from "./onboarding";
+import { offlineAnswer } from "./offline";
 import { advance, byId, formatQuestion, plan } from "./aptitude";
 import { computeScore } from "./scoring";
 import { decideNextAction } from "./nba";
 import { createCalendarEvent } from "./calendar";
 import { assignByLanguage, hotLeadAlert } from "./assign";
-import { deliverOn } from "./channels";
+import { channelConfig, deliverOn } from "./channels";
 import { normalizePhone } from "./identity";
 import { bumpStat } from "./stats";
 import { singleFlight } from "./cache";
@@ -184,6 +186,8 @@ function leadState(lead: Lead): Record<string, unknown> {
     city: lead.city,
     relation: lead.contacts?.[0]?.relation,
     studentName: lead.studentName,
+    studentContactKnown: !!(lead.studentPhone || lead.studentEmail),
+    interestedCourse: lead.interestCourseId,
     profile: lead.profile,
     objections: lead.objections,
     recommendation: lead.recommendation,
@@ -192,7 +196,7 @@ function leadState(lead: Lead): Record<string, unknown> {
   };
 }
 
-function systemPrompt(kb: KnowledgeBase, slots: Slot[], lead: Lead, channel: string, now: Date): string {
+function systemPrompt(kb: KnowledgeBase, slots: Slot[], lead: Lead, channel: string, now: Date, intake = ""): string {
   const slotList = slots.map((s) => ({ id: s.id, title: s.title, course: s.courseId ?? "", when: formatIst(s.startAt.toDate()), mode: s.mode, seatsLeft: s.capacity - s.booked }));
   const state = leadState(lead);
   return `You are Asha, the admissions counsellor of ${kb.instituteName}, a tech training institute in ${kb.city}. You are chatting on ${channel}. Current time: ${formatIst(now)}.
@@ -240,7 +244,7 @@ AVAILABLE_SLOTS:
 ${JSON.stringify(slotList)}
 
 LEAD_STATE_SO_FAR:
-${JSON.stringify(state)}`;
+${JSON.stringify(state)}${intake ? `\n\nINTAKE ANSWERS (asked by the system just before this reply):\n${intake}` : ""}`;
 }
 
 /** History → model turns. Voice notes the model has not heard yet go in as audio (newest 3). */
@@ -270,6 +274,12 @@ function toTurns(history: Message[], unanswered: Set<number>): Turn[] {
 export interface BrainResult {
   reply: string;
   channel: string;
+  /** Tappable choices (intake questions, aptitude A/B/C): buttons on WhatsApp, a keyboard on Telegram. */
+  options?: ObOption[];
+  askContact?: boolean;
+  lang?: string;
+  /** The stored message, so a failed delivery can be marked on it. */
+  msgId?: string;
 }
 
 // ------------------------------------------------------------------ answer cache
@@ -279,7 +289,7 @@ export interface BrainResult {
 // version, open slots), so a cached answer is exactly what the model would have said.
 // If 1,000 identical questions arrive in the same second, one worker asks the AI and the rest
 // wait for its answer (single-flight), instead of 1,000 AI calls.
-const PROMPT_VERSION = "v8";
+const PROMPT_VERSION = "v9";
 
 function sha(s: string): string {
   return createHash("sha256").update(s).digest("hex").slice(0, 40);
@@ -384,7 +394,18 @@ export async function respondAndDeliver(leadId: string): Promise<number> {
   const lead = (await db.doc(`leads/${leadId}`).get()).data() as Lead | undefined;
   if (!lead) return 0;
   for (const r of results) {
-    if (["whatsapp", "telegram", "instagram"].includes(r.channel)) await deliverOn(r.channel, lead, r.reply);
+    if (!["whatsapp", "telegram", "instagram"].includes(r.channel)) continue;
+    const d = await deliverOn(r.channel, lead, r.reply, { options: r.options, askContact: r.askContact, lang: r.lang });
+    if (!d.delivered && r.msgId) {
+      // Visible on the desk: e.g. "(#131030) Recipient phone number not in allowed list".
+      await db
+        .doc(`leads/${leadId}/messages/${r.msgId}`)
+        .set({ meta: { delivered: false, note: d.note || "send failed" } }, { merge: true })
+        .catch(() => undefined);
+      await db.doc(`leads/${leadId}`).set({ deliveryIssue: { channel: r.channel, note: (d.note || "send failed").slice(0, 240), at: FieldValue.serverTimestamp() } }, { merge: true });
+    } else if (d.delivered && lead.deliveryIssue) {
+      await db.doc(`leads/${leadId}`).set({ deliveryIssue: FieldValue.delete() }, { merge: true });
+    }
   }
   return results.length;
 }
@@ -431,7 +452,78 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
     return null;
   }
 
-  const system = systemPrompt(kb, slots, lead, msg.channel, now);
+  // ---- Intake questions (who / name / contact / course) before counselling ----
+  let intake = "";
+  let identityFromIntake = false;
+  const meta = (msg.meta ?? {}) as Record<string, unknown>;
+  if (await onboardingApplies(lead, msg, history, lastReply)) {
+    const r = advanceOnboarding(lead.onboarding ?? null, {
+      text: msg.text && !msg.text.startsWith("🎤") ? msg.text : "",
+      choiceId: typeof meta.choiceId === "string" ? meta.choiceId : undefined,
+      isVoice: !!msg.audioB64,
+      phoneKnown: msg.channel === "whatsapp" && !!lead.phone,
+      langHint: String(meta.uiLang ?? meta.langHint ?? lead.uiLang ?? lead.language ?? ""),
+      introShown: msg.channel === "web",
+      courses: kb.courses,
+      instituteName: kb.instituteName,
+    });
+    // Earlier unanswered questions in the same burst are kept for Asha.
+    if (!r.state.firstQuestion) {
+      const earlier = fresh.slice(0, -1).map((m) => m.text ?? "").find((x) => x.length > 8 && !x.startsWith("["));
+      if (earlier) r.state.firstQuestion = earlier.slice(0, 400);
+    }
+    const patch = intakePatch(lead, r.state, msg.channel);
+    identityFromIntake = patch.identityChanged;
+    Object.assign(lead, patch.local);
+    if (r.reply) {
+      const ref = await leadRef.collection("messages").add({
+        role: "ai",
+        channel: msg.channel,
+        text: r.reply.text,
+        createdAt: FieldValue.serverTimestamp(),
+        meta: {
+          kind: "onboarding",
+          step: r.state.step,
+          options: r.reply.options.map((o) => o.label),
+          choices: r.reply.options,
+          ...(r.reply.askContact ? { askContact: true } : {}),
+          ...(fresh.length > 1 ? { answeredTogether: fresh.length } : {}),
+        },
+      });
+      const nudgeAt = respectQuietHours(new Date(now.getTime() + 2 * 3_600_000));
+      await leadRef.set(
+        {
+          ...counters,
+          ...patch.write,
+          status: !lead.status || lead.status === "new" ? "engaged" : lead.status,
+          lastMessageAt: FieldValue.serverTimestamp(),
+          lastInboundAt: Timestamp.fromDate(now),
+          lastChannel: msg.channel,
+          // Nobody is forgotten: if they stop halfway, Asha nudges them later.
+          nextAction: {
+            at: Timestamp.fromDate(nudgeAt),
+            channel: msg.channel,
+            message: nudgeText(r.state.lang),
+            reason: "stopped answering the intake questions",
+            playbook: "intake_nudge",
+            done: false,
+          },
+          summary: intakeSummary(lead, r.state),
+          ai: { lastAnsweredId: latestDoc.id, retries: 0, retryAt: FieldValue.delete(), lastError: FieldValue.delete() },
+        },
+        { merge: true },
+      );
+      await bumpStat("intakeSteps");
+      if (identityFromIntake) await resolveIdentity(leadId);
+      if (lead.uiLang === undefined && typeof meta.uiLang === "string") await leadRef.set({ uiLang: meta.uiLang }, { merge: true });
+      return { reply: r.reply.text, channel: msg.channel, options: r.reply.options, askContact: r.reply.askContact, lang: r.state.lang, msgId: ref.id };
+    }
+    // Intake finished (or handed over): Asha answers this message with what was learnt.
+    await leadRef.set({ ...patch.write }, { merge: true });
+  }
+  if (lead.onboarding?.step === "done" && !lead.onboarding.briefed) intake = onboardingBrief(lead.onboarding, kb.courses);
+
+  const system = systemPrompt(kb, slots, lead, msg.channel, now, intake);
   const turns = toTurns(history, new Set(unansweredIdx));
   const userTexts = history.filter((m) => m.role === "user").map((m) => m.text || m.transcript || "");
 
@@ -456,24 +548,43 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
       thought = await think(leadId, system, turns, kb, userTexts);
     }
   } catch (e) {
-    console.error("AI failed", e);
-    // Never lost: an instant acknowledgement once, then automatic retries with back-off.
+    const why = String((e as Error)?.message ?? e);
+    console.error("AI failed", why);
+    // Never lost: an instant answer from the knowledge base once, then automatic retries with
+    // back-off (2, 4, 8… min) until the AI is back. The fallback is not counted as a reply, so
+    // the retry still answers properly.
     const retries = (lead.ai?.retries ?? 0) + 1;
+    const lang = lead.language ?? lead.onboarding?.lang ?? lead.uiLang;
+    const quick = text && !msg.audioB64 ? offlineAnswer(kb, [lead.onboarding?.firstQuestion ?? "", text].join(" "), lang, slots) : t("busy", lang);
+    let quickId: string | undefined;
     if (retries === 1) {
-      await leadRef.collection("messages").add({ role: "ai", channel: msg.channel, text: t("busy", lead.language), createdAt: FieldValue.serverTimestamp(), meta: { fallback: true } });
+      const ref = await leadRef.collection("messages").add({
+        role: "ai",
+        channel: msg.channel,
+        text: quick,
+        createdAt: FieldValue.serverTimestamp(),
+        meta: { fallback: true, offline: true, why: why.slice(0, 300) },
+      });
+      quickId = ref.id;
     }
     const waitMin = Math.min(30, 2 ** retries);
     await leadRef.set(
       {
+        ...(retries === 1 ? counters : {}),
         needsHuman: retries >= 3,
-        handoffReason: retries >= 3 ? "AI busy for a while: please reply from the desk" : "",
+        handoffReason: retries >= 3 ? "AI unavailable for a while: please reply from the desk" : "",
         lastMessageAt: FieldValue.serverTimestamp(),
-        ai: retries <= 6 ? { retries, retryAt: Timestamp.fromMillis(Date.now() + waitMin * 60_000) } : { retries, retryAt: FieldValue.delete() },
+        ai: {
+          retries,
+          lastError: why.slice(0, 300),
+          retryAt: retries <= 6 ? Timestamp.fromMillis(Date.now() + waitMin * 60_000) : FieldValue.delete(),
+        },
       },
       { merge: true },
     );
     await bumpStat("aiFailures");
-    return retries === 1 ? { reply: t("busy", lead.language), channel: msg.channel } : null;
+    if (identityFromIntake) await resolveIdentity(leadId).catch(() => undefined);
+    return retries === 1 ? { reply: quick, channel: msg.channel, msgId: quickId } : null;
   }
   let out: BrainOut = JSON.parse(JSON.stringify(thought.out)) as BrainOut;
   const blockedDraft = thought.blockedDraft;
@@ -522,7 +633,7 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
   }
 
   // ---- Write the reply ----
-  await leadRef.collection("messages").add({
+  const replyRef = await leadRef.collection("messages").add({
     role: "ai",
     channel: msg.channel,
     text: replyText,
@@ -601,13 +712,16 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
     lastMessageAt: FieldValue.serverTimestamp(),
     status,
     guardBlocks: FieldValue.increment(blockedDraft && cacheState === "off" ? 1 : 0),
-    ai: { lastAnsweredId: latestDoc.id, retries: 0, retryAt: FieldValue.delete() },
+    ai: { lastAnsweredId: latestDoc.id, retries: 0, retryAt: FieldValue.delete(), lastError: FieldValue.delete() },
+    recentQuestions: recentQuestions(lead, fresh, now),
   };
+  if (intake && lead.onboarding) update.onboarding = { briefed: true };
+  if (lead.onboarding?.courseId && !lead.recommendation && !recommendation) update.interestCourseId = lead.onboarding.courseId;
   if (recommendation) update.recommendation = recommendation;
   if (booking) update.booking = booking;
 
   // ---- Who is this? (writer, student, extra phones) ----
-  let identityChanged = false;
+  let identityChanged = identityFromIntake;
   const newPhones: string[] = [];
   if (out.name && !lead.name) {
     update.name = out.name;
@@ -655,7 +769,115 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
   }
 
   if (identityChanged) await resolveIdentity(leadId);
-  return { reply: replyText, channel: msg.channel };
+  return {
+    reply: replyText,
+    channel: msg.channel,
+    msgId: replyRef.id,
+    lang: out.language,
+    ...(shownQuestion ? { options: shownQuestion.options.map((o) => ({ id: `apt:${o.key}`, label: `${o.key}) ${o.text}` })) } : {}),
+  };
+}
+
+const CHAT_CHANNELS = new Set(["web", "whatsapp", "telegram", "instagram"]);
+const NOT_CHAT_SOURCES = new Set(["form", "googleform", "walkin", "call"]);
+
+/**
+ * The intake questions run for a brand-new chat enquiry (and until they are finished).
+ * Never for sample data, self-tests, load tests, simulators, form/call/walk-in leads, or a
+ * conversation someone has already replied to. Admin → Channels can switch them off.
+ */
+async function onboardingApplies(lead: Lead, msg: Message, history: Message[], lastReply: number): Promise<boolean> {
+  if (lead.onboarding) return lead.onboarding.step !== "done";
+  if (!CHAT_CHANNELS.has(msg.channel)) return false;
+  if (lead.simulated || lead.selftest || lead.burst || lead.seed || lead.aiPaused) return false;
+  if (lead.firstSource && NOT_CHAT_SOURCES.has(lead.firstSource)) return false;
+  if (lastReply >= 0 || (lead.aptitude && lead.aptitude.status !== "not_started")) return false;
+  if (history.some((m) => m.role === "user" && ((m.meta ?? {}) as Record<string, unknown>).intake)) return false;
+  return (await channelConfig()).onboarding;
+}
+
+/** Turns intake answers into lead fields (who is writing, the student, contacts). */
+function intakePatch(lead: Lead, st: OnboardingState, channel: string): { write: Record<string, unknown>; local: Partial<Lead>; identityChanged: boolean } {
+  const write: Record<string, unknown> = { onboarding: JSON.parse(JSON.stringify(st)) };
+  const local: Partial<Lead> = { onboarding: st };
+  let identityChanged = false;
+  const prev = lead.onboarding;
+  const contacts = [...(lead.contacts ?? [])];
+
+  if (st.relation && st.relation !== prev?.relation) {
+    if (contacts.length) contacts[0] = { ...contacts[0], relation: st.relation };
+    else contacts.push({ name: lead.name ?? "", phone: lead.phone ?? "", relation: st.relation, channel, isPrimary: true });
+    write.contacts = contacts;
+    local.contacts = contacts;
+    identityChanged = true;
+  }
+  if (st.studentName && st.studentName !== prev?.studentName) {
+    write.studentName = st.studentName;
+    local.studentName = st.studentName;
+    if (st.relation === "self") {
+      // The typed name beats a WhatsApp/Telegram profile name ("Rahul ❤️", "Papa").
+      const aliases = new Set(lead.aliases ?? []);
+      if (lead.name && lead.name !== st.studentName) aliases.add(lead.name);
+      write.name = st.studentName;
+      write.nameLatin = latinName(st.studentName) ?? st.studentName;
+      write.aliases = Array.from(aliases);
+      local.name = st.studentName;
+      if (contacts.length) {
+        contacts[0] = { ...contacts[0], name: st.studentName };
+        write.contacts = contacts;
+        local.contacts = contacts;
+      }
+    }
+    identityChanged = true;
+  }
+  const phones: string[] = [];
+  if (st.phone && st.phone !== prev?.phone) {
+    write.studentPhone = st.phone;
+    local.studentPhone = st.phone;
+    phones.push(st.phone);
+    if (st.relation === "self" && !lead.phone) {
+      write.phone = st.phone;
+      local.phone = st.phone;
+    }
+    identityChanged = true;
+  }
+  if (st.email && st.email !== prev?.email) {
+    if (st.relation === "self" && !lead.email) {
+      write.email = st.email;
+      local.email = st.email;
+    } else {
+      write.studentEmail = st.email;
+      local.studentEmail = st.email;
+    }
+    identityChanged = true;
+  }
+  if (phones.length) write.contactPhones = FieldValue.arrayUnion(...phones);
+  if (st.courseId && st.courseId !== prev?.courseId) {
+    write.interestCourseId = st.courseId;
+    local.interestCourseId = st.courseId;
+  }
+  return { write, local, identityChanged };
+}
+
+/** A 3-line card summary while the intake is still running (the AI writes it afterwards). */
+function intakeSummary(lead: Lead, st: OnboardingState): string[] {
+  const who = st.relation === "self" ? "Student writing" : st.relation ? `${st.relation[0].toUpperCase()}${st.relation.slice(1)} writing` : "Not told who is writing yet";
+  return [
+    `${who}${st.studentName ? ` · student ${st.studentName}` : ""}${st.phone || st.email ? " · contact saved" : ""}`,
+    st.firstQuestion ? `First asked: "${st.firstQuestion.slice(0, 90)}"` : `New ${lead.lastChannel ?? "chat"} enquiry`,
+    `Intake: answering question "${st.step}"`,
+  ];
+}
+
+/** Keeps the latest 6 things this person asked, for the desk card and search. */
+function recentQuestions(lead: Lead, fresh: Message[], now: Date): { text: string; at: Timestamp; channel: string }[] {
+  const add = fresh
+    .map((m) => ({ text: (m.transcript || m.text || "").trim(), channel: m.channel }))
+    .filter((q) => q.text.length > 2 && !q.text.startsWith("[") && !q.text.startsWith("🎤"))
+    .map((q) => ({ text: q.text.slice(0, 160), at: Timestamp.fromDate(now), channel: q.channel }));
+  const first = lead.onboarding?.firstQuestion;
+  const extra = first && !(lead.recentQuestions ?? []).some((q) => q.text === first.slice(0, 160)) ? [{ text: first.slice(0, 160), at: Timestamp.fromDate(now), channel: lead.lastChannel ?? "web" }] : [];
+  return [...(lead.recentQuestions ?? []), ...extra, ...add].slice(-6);
 }
 
 function stripUndefined(s: AptitudeState): Record<string, unknown> {

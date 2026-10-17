@@ -4,14 +4,17 @@ import '../../app_theme.dart';
 import '../../data/institute.dart';
 import '../../l10n.dart';
 import '../../utils/responsive.dart';
+import '../../data/links.dart';
 import '../../widgets/brand.dart';
+import '../../widgets/channel_links.dart';
 import '../../widgets/site_widgets.dart';
+import 'site_screen.dart' show SitePage;
 
 // =========================================================================== hero
-class HeroSection extends StatelessWidget {
-  const HeroSection({super.key, required this.onChat, required this.onForm, required this.onCall});
+/// Home: one headline, one line, and the three ways to start (Asha, WhatsApp, Telegram).
+class HomeHero extends StatelessWidget {
+  const HomeHero({super.key, required this.onChat, required this.onCall});
   final VoidCallback onChat;
-  final VoidCallback onForm;
   final VoidCallback onCall;
 
   @override
@@ -19,130 +22,340 @@ class HeroSection extends StatelessWidget {
     final size = screenSizeOf(context);
     final phone = size == ScreenSize.phone;
     final wide = size == ScreenSize.desktop;
-    final titleStyle = (phone ? context.texts.displaySmall : context.texts.displayMedium)?.copyWith(color: Colors.white, fontSize: phone ? 34 : (wide ? 56 : 46));
+    final dark = context.isDark;
+    final titleStyle = (phone ? context.texts.headlineLarge : context.texts.displayMedium)?.copyWith(
+      color: context.scheme.onSurface,
+      fontSize: phone ? 31 : (wide ? 54 : 44),
+    );
 
-    final copy = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Eyebrow(tr('hero.eyebrow'), onDark: true, icon: Icons.location_on_rounded),
-        const SizedBox(height: 22),
-        Text(tr('hero.title1'), style: titleStyle),
-        GradientText(tr('hero.title2'), style: titleStyle ?? const TextStyle(fontSize: 46, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 20),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
-          child: Text(
-            tr('hero.sub'),
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: phone ? 15.5 : 17.5, height: 1.6),
-          ),
-        ),
-        const SizedBox(height: 30),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
+    final buttons = phone
+        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            FilledButton.icon(
+              onPressed: onChat,
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: Text(tr('hero.chat')),
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.coral, foregroundColor: Colors.white, minimumSize: const Size.fromHeight(52)),
+            ),
+            const SizedBox(height: 10),
+            const Row(children: [
+              Expanded(child: TalkButton(ChatChannel.whatsapp, compact: true)),
+              SizedBox(width: 10),
+              Expanded(child: TalkButton(ChatChannel.telegram, compact: true)),
+            ]),
+          ])
+        : Wrap(spacing: 12, runSpacing: 12, children: [
             FilledButton.icon(
               onPressed: onChat,
               icon: const Icon(Icons.auto_awesome, size: 18),
               label: Text(tr('hero.chat')),
               style: FilledButton.styleFrom(backgroundColor: AppTheme.coral, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18)),
             ),
-            OutlinedButton.icon(
-              onPressed: onCall,
-              icon: const Icon(Icons.support_agent_rounded, size: 18),
-              label: Text(tr('hero.call')),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.white38),
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-              ),
-            ),
-            TextButton(
-              onPressed: onForm,
-              style: TextButton.styleFrom(foregroundColor: Colors.white70, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18)),
-              child: Text('${tr('hero.form')} →'),
-            ),
-          ],
+            const TalkButton(ChatChannel.whatsapp),
+            const TalkButton(ChatChannel.telegram),
+          ]);
+
+    final copy = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Eyebrow(tr('hero.eyebrow'), icon: Icons.location_on_rounded),
+        SizedBox(height: phone ? 16 : 22),
+        Text(tr('hero.title1'), style: titleStyle),
+        GradientText(
+          tr('hero.title2'),
+          style: titleStyle ?? const TextStyle(fontSize: 44, fontWeight: FontWeight.w800),
+          gradient: LinearGradient(colors: dark ? const [Color(0xFF5EEAD4), Color(0xFFFF8A6B)] : const [AppTheme.indigo, AppTheme.coral]),
         ),
-        const SizedBox(height: 28),
-        Wrap(
-          spacing: 20,
-          runSpacing: 10,
-          children: [
+        SizedBox(height: phone ? 12 : 18),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Text(tr('hero.short'), style: context.texts.bodyLarge?.copyWith(fontSize: phone ? 15.5 : 17.5, color: context.scheme.onSurfaceVariant)),
+        ),
+        SizedBox(height: phone ? 22 : 30),
+        buttons,
+        const SizedBox(height: 12),
+        Wrap(spacing: 4, runSpacing: 0, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          TextButton.icon(
+            onPressed: onCall,
+            icon: const Icon(Icons.support_agent_rounded, size: 17),
+            label: Text(tr('hero.call')),
+          ),
+          TextButton.icon(
+            onPressed: () => openChannel(context, ChatChannel.form),
+            icon: const Icon(Icons.assignment_outlined, size: 17),
+            label: Text(tr('hero.form')),
+          ),
+        ]),
+        if (!phone) ...[
+          const SizedBox(height: 14),
+          Wrap(spacing: 18, runSpacing: 8, children: [
             for (final k in ['hero.trust1', 'hero.trust2', 'hero.trust3'])
               Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.check_circle_rounded, size: 17, color: Color(0xFF5EEAD4)),
-                const SizedBox(width: 7),
-                Text(tr(k), style: const TextStyle(color: Colors.white70, fontSize: 13.5, fontWeight: FontWeight.w600)),
+                const Icon(Icons.check_circle_rounded, size: 16, color: AppTheme.success),
+                const SizedBox(width: 6),
+                Text(tr(k), style: TextStyle(color: context.scheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
               ]),
-          ],
-        ),
+          ]),
+        ],
       ],
     );
 
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(gradient: AppTheme.heroGradient),
-      child: Stack(
-        children: [
-          const Positioned.fill(child: _HeroGlow()),
-          Padding(
-            padding: SitePadding.of(context).copyWith(top: navHeight(context) + (phone ? 36 : 72), bottom: phone ? 56 : 96),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1180),
-                child: wide
-                    ? Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                        Expanded(flex: 6, child: copy),
-                        const SizedBox(width: 56),
-                        const Expanded(flex: 5, child: _ChatPreview()),
-                      ])
-                    : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        copy,
-                        if (!phone) ...[const SizedBox(height: 44), const _ChatPreview()],
-                      ]),
-              ),
-            ),
-          ),
-        ],
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: dark ? const [Color(0xFF0B1220), Color(0xFF0E2A2A)] : const [Color(0xFFEFF8F6), Color(0xFFFFFFFF), Color(0xFFFFF4EF)],
+        ),
+      ),
+      padding: SitePadding.of(context).copyWith(top: phone ? 28 : 64, bottom: phone ? 34 : 72),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: wide
+              ? Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                  Expanded(flex: 6, child: copy),
+                  const SizedBox(width: 56),
+                  const Expanded(flex: 5, child: _ChatPreview()),
+                ])
+              : copy,
+        ),
       ),
     );
   }
 }
 
-/// Soft teal and coral light behind the hero.
-class _HeroGlow extends StatelessWidget {
-  const _HeroGlow();
+/// Scan-to-chat: QR codes for WhatsApp, Telegram and the Google Form (judges scan from the screen).
+class ScanToChatSection extends StatefulWidget {
+  const ScanToChatSection({super.key, required this.onChat});
+  final VoidCallback onChat;
 
   @override
-  Widget build(BuildContext context) => IgnorePointer(
-        child: Stack(children: [
-          Positioned(
-            right: -120,
-            top: -80,
-            child: Container(
-              width: 520,
-              height: 520,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(colors: [const Color(0xFF14B8A6).withValues(alpha: 0.28), Colors.transparent]),
-              ),
+  State<ScanToChatSection> createState() => _ScanToChatSectionState();
+}
+
+class _ScanToChatSectionState extends State<ScanToChatSection> {
+  bool _showQr = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final phone = screenSizeOf(context) == ScreenSize.phone;
+    final cards = ResponsiveGrid(
+      minItemWidth: 240,
+      children: const [ChannelQrCard(ChatChannel.whatsapp), ChannelQrCard(ChatChannel.telegram), ChannelQrCard(ChatChannel.form)],
+    );
+    return Section(
+      background: context.scheme.surfaceContainerLow,
+      padTop: phone ? 30 : 64,
+      padBottom: phone ? 30 : 64,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SectionHeader(eyebrow: tr('scan.eyebrow'), title: tr('scan.title'), subtitle: tr(phone ? 'scan.subPhone' : 'scan.sub')),
+        SizedBox(height: phone ? 18 : 30),
+        if (!phone)
+          cards
+        else ...[
+          // On the phone itself a QR is not scannable: show one-tap buttons, QR on request.
+          for (final c in ChatChannel.values) _ChannelTile(c),
+          Center(
+            child: TextButton.icon(
+              onPressed: () => setState(() => _showQr = !_showQr),
+              icon: Icon(_showQr ? Icons.expand_less_rounded : Icons.qr_code_2, size: 18),
+              label: Text(tr(_showQr ? 'scan.hideQr' : 'scan.showQr')),
             ),
           ),
-          Positioned(
-            left: -160,
-            bottom: -200,
+          if (_showQr) cards,
+        ],
+      ]),
+    );
+  }
+}
+
+class _ChannelTile extends StatelessWidget {
+  const _ChannelTile(this.channel);
+  final ChatChannel channel;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Material(
+          color: context.scheme.surface,
+          borderRadius: BorderRadius.circular(AppTheme.r16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppTheme.r16),
+            onTap: () => openChannel(context, channel),
             child: Container(
-              width: 520,
-              height: 520,
+              padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(colors: [AppTheme.coral.withValues(alpha: 0.18), Colors.transparent]),
+                borderRadius: BorderRadius.circular(AppTheme.r16),
+                border: Border.all(color: channel.color.withValues(alpha: 0.35)),
               ),
+              child: Row(children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(color: channel.color, borderRadius: BorderRadius.circular(12)),
+                  child: Icon(channel.icon, color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(channel.talkLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    ValueListenableBuilder<PublicLinks>(
+                      valueListenable: PublicLinks.current,
+                      builder: (context, l, _) => Text(channel.handle(l), style: context.texts.bodySmall?.copyWith(fontSize: 12.5)),
+                    ),
+                  ]),
+                ),
+                Icon(Icons.chevron_right_rounded, color: channel.color),
+              ]),
             ),
           ),
-        ]),
+        ),
       );
+}
+
+/// Home: the course list in one glance (full details live on the Courses page).
+class HomeCourses extends StatelessWidget {
+  const HomeCourses({super.key, required this.kb, required this.onAsk, required this.onAll});
+  final Kb kb;
+  final void Function(String? prefill) onAsk;
+  final VoidCallback onAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final phone = screenSizeOf(context) == ScreenSize.phone;
+    return Section(
+      padTop: phone ? 30 : 64,
+      padBottom: phone ? 34 : 72,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Expanded(child: SectionHeader(eyebrow: tr('courses.eyebrow'), title: tr('home.courses'))),
+          if (!phone) TextButton(onPressed: onAll, child: Text('${tr('home.allCourses')} →')),
+        ]),
+        SizedBox(height: phone ? 16 : 26),
+        ResponsiveGrid(
+          minItemWidth: 340,
+          spacing: 12,
+          children: [for (final c in kb.courses) _CourseRow(c: c, onAsk: onAsk)],
+        ),
+        if (phone) ...[
+          const SizedBox(height: 8),
+          Center(child: TextButton(onPressed: onAll, child: Text('${tr('home.allCourses')} →'))),
+        ],
+      ]),
+    );
+  }
+}
+
+class _CourseRow extends StatelessWidget {
+  const _CourseRow({required this.c, required this.onAsk});
+  final Map<String, dynamic> c;
+  final void Function(String? prefill) onAsk;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = '${c['name'] ?? ''}';
+    final fee = c['feeInr'] as num?;
+    return Material(
+      color: context.scheme.surface,
+      borderRadius: BorderRadius.circular(AppTheme.r16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppTheme.r16),
+        onTap: () => onAsk('${tr('courses.tell')} $name'),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(AppTheme.r16), border: Border.all(color: context.scheme.outlineVariant)),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    '${c['durationWeeks'] ?? '-'} ${tr('courses.weeks')}',
+                    if (fee != null) rupees(fee),
+                    if ((c['nextBatch'] as String?)?.isNotEmpty == true) '${tr('courses.next')}: ${c['nextBatch']}',
+                  ].join(' · '),
+                  style: context.texts.bodySmall?.copyWith(fontSize: 12.5),
+                ),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(color: AppTheme.indigo.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(999)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.auto_awesome, size: 14, color: AppTheme.indigo),
+                const SizedBox(width: 5),
+                Text(tr('courses.askShort'), style: const TextStyle(color: AppTheme.indigo, fontWeight: FontWeight.w800, fontSize: 12.5)),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Heading of an inner page (Courses, FAQ, …).
+class PageTitle extends StatelessWidget {
+  const PageTitle(this.title, {super.key});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final phone = screenSizeOf(context) == ScreenSize.phone;
+    return Container(
+      width: double.infinity,
+      color: context.scheme.surfaceContainerLow,
+      padding: SitePadding.of(context).copyWith(top: phone ? 22 : 40, bottom: phone ? 18 : 30),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: Text(title, style: (phone ? context.texts.headlineSmall : context.texts.headlineLarge)?.copyWith(color: context.scheme.onSurface)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Contact page: address, phone, and every way to reach a counsellor.
+class ContactSection extends StatelessWidget {
+  const ContactSection({super.key, required this.onChat, required this.onCall});
+  final VoidCallback onChat;
+  final VoidCallback onCall;
+
+  @override
+  Widget build(BuildContext context) {
+    return Section(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SurfaceCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(Institute.name, style: context.texts.titleLarge),
+            const SizedBox(height: 6),
+            Text('${Institute.address}\n${Institute.phone} · ${Institute.email}', style: context.texts.bodyMedium?.copyWith(height: 1.7)),
+            const SizedBox(height: 16),
+            Wrap(spacing: 10, runSpacing: 10, children: [
+              FilledButton.icon(
+                onPressed: onChat,
+                style: FilledButton.styleFrom(backgroundColor: AppTheme.coral, foregroundColor: Colors.white),
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                label: Text(tr('hero.chat')),
+              ),
+              OutlinedButton.icon(onPressed: onCall, icon: const Icon(Icons.support_agent_rounded, size: 18), label: Text(tr('hero.call'))),
+            ]),
+          ]),
+        ),
+        const SizedBox(height: 26),
+        Text(tr('scan.title'), style: context.texts.titleLarge),
+        const SizedBox(height: 14),
+        const ResponsiveGrid(
+          minItemWidth: 240,
+          children: [ChannelQrCard(ChatChannel.whatsapp), ChannelQrCard(ChatChannel.telegram), ChannelQrCard(ChatChannel.form)],
+        ),
+      ]),
+    );
+  }
 }
 
 /// A still of the real product: the sponsor's exact example question, answered.
@@ -158,7 +371,7 @@ class _ChatPreview extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
             decoration: BoxDecoration(
-              color: me ? AppTheme.indigo : Colors.white,
+              color: me ? AppTheme.indigo : context.scheme.surfaceContainerHigh,
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(16),
                 topRight: const Radius.circular(16),
@@ -166,17 +379,17 @@ class _ChatPreview extends StatelessWidget {
                 bottomRight: Radius.circular(me ? 4 : 16),
               ),
             ),
-            child: Text(text, style: TextStyle(color: me ? Colors.white : AppTheme.ink, fontSize: 13.8, height: 1.45)),
+            child: Text(text, style: TextStyle(color: me ? Colors.white : context.scheme.onSurface, fontSize: 13.8, height: 1.45)),
           ),
         );
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.07),
+        color: context.scheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.r28),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 60, offset: const Offset(0, 30))],
+        border: Border.all(color: context.scheme.outlineVariant),
+        boxShadow: AppTheme.lift(context, y: 24, blur: 50, opacity: 0.10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -192,20 +405,20 @@ class _ChatPreview extends StatelessWidget {
             const SizedBox(width: 10),
             const Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Asha', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                Text('online · 11:42 PM', style: TextStyle(color: Colors.white60, fontSize: 11.5)),
+                Text('Asha', style: TextStyle(fontWeight: FontWeight.w800)),
+                Text('online · 11:42 PM', style: TextStyle(color: AppTheme.success, fontSize: 11.5, fontWeight: FontWeight.w600)),
               ]),
             ),
-            _Pill('EN · हिं · मरा', color: const Color(0xFF5EEAD4)),
+            _Pill('EN · हिं · मरा', color: AppTheme.indigo),
           ]),
           const SizedBox(height: 16),
           bubble(tr('hero.card.q'), me: true),
           bubble(tr('hero.card.a'), me: false),
           const SizedBox(height: 4),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            _Pill('🧠 Aptitude 3/4', color: const Color(0xFFC4B5FD)),
-            _Pill('🛡 No invented fees', color: const Color(0xFFFCA5A5)),
-            _Pill('📅 Demo booked', color: const Color(0xFF86EFAC)),
+            _Pill('🧠 Aptitude 3/4', color: AppTheme.ai),
+            _Pill('🛡 No invented fees', color: AppTheme.guard),
+            _Pill('📅 Demo booked', color: AppTheme.success),
           ]),
         ],
       ),
@@ -302,10 +515,11 @@ class AiSection extends StatelessWidget {
 
 // =================================================================== courses
 class CoursesSection extends StatelessWidget {
-  const CoursesSection({super.key, required this.kb, required this.onAsk, required this.onEnquire});
+  const CoursesSection({super.key, required this.kb, required this.onAsk, required this.onEnquire, this.showHeader = true});
   final Kb kb;
   final void Function(String? prefill) onAsk;
   final VoidCallback onEnquire;
+  final bool showHeader;
 
   static const _accents = [AppTheme.indigo, AppTheme.coral, AppTheme.ai, AppTheme.human, Color(0xFF0891B2), Color(0xFFD97706)];
   static const _icons = [Icons.code_rounded, Icons.coffee_rounded, Icons.web_rounded, Icons.insights_rounded, Icons.cloud_rounded, Icons.bug_report_rounded];
@@ -313,11 +527,17 @@ class CoursesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final courses = kb.courses;
+    final phone = screenSizeOf(context) == ScreenSize.phone;
     return Section(
-      background: context.scheme.surfaceContainerLow,
+      padTop: showHeader ? null : (phone ? 22 : 40),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SectionHeader(eyebrow: tr('courses.eyebrow'), title: tr('courses.title'), subtitle: tr('courses.sub')),
-        const SizedBox(height: 36),
+        if (showHeader) ...[
+          SectionHeader(eyebrow: tr('courses.eyebrow'), title: tr('courses.title'), subtitle: tr('courses.sub')),
+          const SizedBox(height: 36),
+        ] else ...[
+          Text(tr('courses.sub'), style: context.texts.bodyLarge?.copyWith(color: context.scheme.onSurfaceVariant)),
+          const SizedBox(height: 20),
+        ],
         ResponsiveGrid(
           minItemWidth: 330,
           children: [
@@ -437,22 +657,22 @@ class PlacementSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final wide = screenSizeOf(context) != ScreenSize.phone;
+    final phone = screenSizeOf(context) == ScreenSize.phone;
     final policy = '${kb.policies['placement'] ?? ''}';
     final left = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SectionHeader(eyebrow: tr('placement.eyebrow'), title: tr('placement.title'), onDark: true),
+      SectionHeader(eyebrow: tr('placement.eyebrow'), title: tr('placement.title')),
       const SizedBox(height: 18),
       Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
+          color: AppTheme.indigo.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(AppTheme.r16),
-          border: Border.all(color: Colors.white24),
+          border: Border.all(color: AppTheme.indigo.withValues(alpha: 0.25)),
         ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Icons.verified_user_rounded, color: Color(0xFF5EEAD4), size: 22),
+          const Icon(Icons.verified_user_rounded, color: AppTheme.indigo, size: 22),
           const SizedBox(width: 12),
-          Expanded(child: Text(policy, style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.6))),
+          Expanded(child: Text(policy, style: context.texts.bodyLarge?.copyWith(fontSize: 15, color: context.scheme.onSurface))),
         ]),
       ),
     ]);
@@ -462,39 +682,45 @@ class PlacementSection extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: context.scheme.surface,
             borderRadius: BorderRadius.circular(AppTheme.r16),
-            border: Border.all(color: Colors.white12),
+            border: Border.all(color: context.scheme.outlineVariant),
           ),
           child: Row(children: [
             const Icon(Icons.check_rounded, color: AppTheme.coral),
             const SizedBox(width: 12),
-            Expanded(child: Text(p, style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w600))),
+            Expanded(child: Text(p, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600))),
           ]),
         ),
     ]);
     return Section(
-      gradient: AppTheme.heroGradient,
-      child: wide
+      padTop: phone ? 26 : 56,
+      child: !phone
           ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: left), const SizedBox(width: 48), Expanded(child: right)])
-          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [left, const SizedBox(height: 28), right]),
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [left, const SizedBox(height: 24), right]),
     );
   }
 }
 
 // =================================================================== batches
 class BatchesSection extends StatelessWidget {
-  const BatchesSection({super.key, required this.kb, required this.onBook});
+  const BatchesSection({super.key, required this.kb, required this.onBook, this.showHeader = true});
   final Kb kb;
   final VoidCallback onBook;
+  final bool showHeader;
 
   @override
   Widget build(BuildContext context) {
     final batches = '${kb.policies['batches'] ?? ''}';
+    final phone = screenSizeOf(context) == ScreenSize.phone;
     return Section(
+      padTop: showHeader ? null : (phone ? 22 : 40),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SectionHeader(eyebrow: tr('batches.eyebrow'), title: tr('batches.title'), subtitle: batches.isEmpty ? null : batches),
-        const SizedBox(height: 28),
+        if (showHeader)
+          SectionHeader(eyebrow: tr('batches.eyebrow'), title: tr('batches.title'), subtitle: batches.isEmpty ? null : batches)
+        else if (batches.isNotEmpty)
+          Text(batches, style: context.texts.bodyLarge?.copyWith(color: context.scheme.onSurfaceVariant)),
+        const SizedBox(height: 22),
         Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppTheme.r20),
@@ -505,17 +731,27 @@ class BatchesSection extends StatelessWidget {
               if (i > 0) const Divider(height: 1),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                child: Row(children: [
-                  Expanded(flex: 5, child: Text('${kb.courses[i]['name']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
-                  Expanded(
-                    flex: 6,
-                    child: Row(children: [
-                      Icon(Icons.event_available_rounded, size: 16, color: AppTheme.indigo),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text('${kb.courses[i]['nextBatch'] ?? '—'}', style: context.texts.bodyMedium?.copyWith(fontSize: 14))),
-                    ]),
-                  ),
-                ]),
+                child: phone
+                    ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('${kb.courses[i]['name']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        Row(children: [
+                          const Icon(Icons.event_available_rounded, size: 16, color: AppTheme.indigo),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text('${kb.courses[i]['nextBatch'] ?? '—'}', style: context.texts.bodyMedium?.copyWith(fontSize: 14))),
+                        ]),
+                      ])
+                    : Row(children: [
+                        Expanded(flex: 5, child: Text('${kb.courses[i]['name']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+                        Expanded(
+                          flex: 6,
+                          child: Row(children: [
+                            const Icon(Icons.event_available_rounded, size: 16, color: AppTheme.indigo),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text('${kb.courses[i]['nextBatch'] ?? '—'}', style: context.texts.bodyMedium?.copyWith(fontSize: 14))),
+                          ]),
+                        ),
+                      ]),
               ),
             ],
           ]),
@@ -580,19 +816,24 @@ class StoriesSection extends StatelessWidget {
 
 // ======================================================================= FAQ
 class FaqSection extends StatelessWidget {
-  const FaqSection({super.key, required this.kb, required this.onChat, required this.onCall});
+  const FaqSection({super.key, required this.kb, required this.onChat, required this.onCall, this.showHeader = true});
   final Kb kb;
   final VoidCallback onChat;
   final VoidCallback onCall;
+  final bool showHeader;
 
   @override
   Widget build(BuildContext context) {
     final faqs = kb.faqs;
+    final phone = screenSizeOf(context) == ScreenSize.phone;
     return Section(
       maxWidth: 880,
+      padTop: showHeader ? null : (phone ? 22 : 40),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SectionHeader(eyebrow: tr('faq.eyebrow'), title: tr('faq.title')),
-        const SizedBox(height: 26),
+        if (showHeader) ...[
+          SectionHeader(eyebrow: tr('faq.eyebrow'), title: tr('faq.title')),
+          const SizedBox(height: 26),
+        ],
         for (final f in faqs)
           Container(
             margin: const EdgeInsets.only(bottom: 10),
@@ -621,99 +862,47 @@ class FaqSection extends StatelessWidget {
   }
 }
 
-// ======================================================================= CTA
-class CtaSection extends StatelessWidget {
-  const CtaSection({super.key, required this.onChat, required this.onForm, required this.onCall});
-  final VoidCallback onChat;
-  final VoidCallback onForm;
-  final VoidCallback onCall;
-
-  @override
-  Widget build(BuildContext context) {
-    final phone = screenSizeOf(context) == ScreenSize.phone;
-    return Section(
-      padTop: phone ? 30 : 60,
-      padBottom: phone ? 40 : 80,
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.all(phone ? 26 : 48),
-        decoration: BoxDecoration(gradient: AppTheme.coralGradient, borderRadius: BorderRadius.circular(AppTheme.r28)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(tr('cta.title'), style: (phone ? context.texts.headlineSmall : context.texts.headlineLarge)?.copyWith(color: Colors.white)),
-          const SizedBox(height: 10),
-          Text(tr('cta.sub'), style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.5)),
-          const SizedBox(height: 24),
-          Wrap(spacing: 12, runSpacing: 12, children: [
-            FilledButton.icon(
-              onPressed: onChat,
-              style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: AppTheme.amberDeep),
-              icon: const Icon(Icons.auto_awesome, size: 18),
-              label: Text(tr('hero.chat')),
-            ),
-            OutlinedButton.icon(
-              onPressed: onCall,
-              style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white70)),
-              icon: const Icon(Icons.call_rounded, size: 18),
-              label: Text(tr('hero.call')),
-            ),
-            TextButton(onPressed: onForm, style: TextButton.styleFrom(foregroundColor: Colors.white), child: Text('${tr('hero.form')} →')),
-          ]),
-        ]),
-      ),
-    );
-  }
-}
-
 // ==================================================================== footer
+/// Light, short footer on every page.
 class SiteFooter extends StatelessWidget {
-  const SiteFooter({super.key, required this.onNavigate});
+  const SiteFooter({super.key, required this.onNavigate, required this.onPage});
   final void Function(String route) onNavigate;
+  final void Function(SitePage page) onPage;
 
   @override
   Widget build(BuildContext context) {
-    final linkStyle = TextButton.styleFrom(foregroundColor: Colors.white70, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8));
-    return Section(
-      background: AppTheme.ink,
-      padTop: 48,
-      padBottom: 40,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Wrap(
-          spacing: 40,
-          runSpacing: 24,
-          crossAxisAlignment: WrapCrossAlignment.start,
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const InstituteLogo(size: 34, onDark: true),
-                const SizedBox(height: 14),
-                Text(Institute.tagline, style: const TextStyle(color: Colors.white70, height: 1.5)),
-                const SizedBox(height: 10),
-                Text('${Institute.phone} · ${Institute.email}\n${Institute.address}', style: const TextStyle(color: Colors.white54, fontSize: 12.5, height: 1.6)),
-              ]),
-            ),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('ENQUIRE', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-              TextButton(style: linkStyle, onPressed: () => onNavigate('/chat?src=footer'), child: const Text('Web chat')),
-              TextButton(style: linkStyle, onPressed: () => onNavigate('/form?src=form'), child: const Text('Enquiry form')),
+    final linkStyle = TextButton.styleFrom(
+      foregroundColor: context.scheme.onSurfaceVariant,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+    );
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: context.scheme.surfaceContainerLow,
+        border: Border(top: BorderSide(color: context.scheme.outlineVariant)),
+      ),
+      padding: SitePadding.of(context).copyWith(top: 28, bottom: 90),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            InstituteLogo(size: 30, onDark: context.isDark),
+            const SizedBox(height: 10),
+            Text('${Institute.tagline}\n${Institute.phone} · ${Institute.email}', style: context.texts.bodySmall?.copyWith(fontSize: 12.5, height: 1.6)),
+            const SizedBox(height: 10),
+            Wrap(spacing: 2, runSpacing: 0, children: [
+              TextButton(style: linkStyle, onPressed: () => onPage(SitePage.courses), child: Text(tr('nav.courses'))),
+              TextButton(style: linkStyle, onPressed: () => onPage(SitePage.faq), child: Text(tr('nav.faq'))),
+              TextButton(style: linkStyle, onPressed: () => onPage(SitePage.contact), child: Text(tr('nav.contact'))),
+              TextButton(style: linkStyle, onPressed: () => onNavigate('/desk'), child: Text(tr('menu.staff'))),
+              TextButton(style: linkStyle, onPressed: () => onNavigate('/demo'), child: Text(tr('menu.judges'))),
             ]),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('STAFF', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-              TextButton(style: linkStyle, onPressed: () => onNavigate('/desk'), child: const Text('Counsellor desk')),
-              TextButton(style: linkStyle, onPressed: () => onNavigate('/walkin'), child: const Text('Walk-in counter')),
-              TextButton(style: linkStyle, onPressed: () => onNavigate('/demo'), child: const Text('Demo hub (judges)')),
-            ]),
-          ],
+            const SizedBox(height: 6),
+            DemoNote(tr('sample.note')),
+          ]),
         ),
-        const SizedBox(height: 28),
-        const Divider(color: Colors.white12),
-        const SizedBox(height: 14),
-        Row(children: [
-          const LeadDeskLogo(size: 22, onDark: true),
-          const SizedBox(width: 10),
-          Expanded(child: Text('© ${DateTime.now().year} · ${tr('sample.note')}', style: const TextStyle(color: Colors.white38, fontSize: 11.5))),
-        ]),
-      ]),
+      ),
     );
   }
 }

@@ -56,3 +56,47 @@ class LangSwitch extends StatelessWidget {
     );
   }
 }
+
+/// Compact language picker for narrow screens: "EN ▾" opens English / हिंदी / मराठी.
+class LangMenuButton extends StatelessWidget {
+  const LangMenuButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<AppLang>(
+      valueListenable: L10n.lang,
+      builder: (context, current, _) => PopupMenuButton<AppLang>(
+        tooltip: 'Language',
+        initialValue: current,
+        onSelected: L10n.set,
+        position: PopupMenuPosition.under,
+        itemBuilder: (_) => [
+          for (final l in AppLang.values)
+            PopupMenuItem(
+              value: l,
+              child: Row(children: [
+                Icon(l == current ? Icons.check_rounded : Icons.translate_rounded, size: 18, color: l == current ? AppTheme.indigo : null),
+                const SizedBox(width: 10),
+                Text(L10n.name(l), style: const TextStyle(fontWeight: FontWeight.w600)),
+              ]),
+            ),
+        ],
+        child: Container(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: context.scheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: context.scheme.outlineVariant),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.translate_rounded, size: 16, color: context.scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(L10n.label(current), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: context.scheme.onSurface)),
+            Icon(Icons.arrow_drop_down_rounded, size: 18, color: context.scheme.onSurfaceVariant),
+          ]),
+        ),
+      ),
+    );
+  }
+}

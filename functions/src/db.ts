@@ -107,6 +107,7 @@ export interface Lead {
   email?: string;
   studentName?: string;
   studentPhone?: string;
+  studentEmail?: string;
   contacts?: LeadContact[];
   contactPhones?: string[];
   sources?: Channel[];
@@ -154,6 +155,18 @@ export interface Lead {
   relatedLeads?: Record<string, { name: string; reason: string; at?: unknown }>;
   createdBy?: string;
   ai?: AiLock;
+  /** Intake questions (who / name / contact / course) before counselling. */
+  onboarding?: import("./onboarding").OnboardingState;
+  /** Course picked from the intake list. */
+  interestCourseId?: string;
+  /** The latest questions this person asked (newest last), for the desk and search. */
+  recentQuestions?: { text: string; at: Timestamp; channel: string }[];
+  /** Language picked on the website when the chat started. */
+  uiLang?: string;
+  /** The last reply that could not be delivered on WhatsApp/Telegram/Instagram, and why. */
+  deliveryIssue?: { channel: string; note: string; at?: unknown };
+  selftest?: boolean;
+  burst?: boolean;
   status?: string;
   mergedInto?: string;
   needsHuman?: boolean;
@@ -175,6 +188,8 @@ export interface AiLock {
   lastAnsweredId?: string;
   retryAt?: Timestamp;
   retries?: number;
+  /** Why the last AI attempt failed (shown on the desk), cleared on the next good reply. */
+  lastError?: string;
 }
 
 export interface Message {

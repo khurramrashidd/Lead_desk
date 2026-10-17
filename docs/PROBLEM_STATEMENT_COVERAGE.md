@@ -27,6 +27,9 @@
 | 14 | Ambiguous cases | ✅ | Same phone + different name → "Possible duplicate" card with **Merge / Different people** buttons, never a silent guess |
 | 15 | Beyond: parent / friend enquiring for the student | ✅ | One lead per student, every enquirer a contact. A parent or friend who gives the student's number is merged; Asha asks for it |
 | 15b | Beyond: one person asking about several students (parent of two, agent, shared family phone) | ✅ | Separate leads, **linked** both ways, never merged; given-name-aware matching so siblings are not merged. docs/SCALE_AND_IDENTITY.md |
+| 15d | Beyond: **intake questions** on WhatsApp, Telegram and web chat | ✅ | Who is this for (student / parent / friend) → student's name → mobile or email → course list as buttons → Asha counsels about the chosen course. Instant, no AI cost, EN/HI/MR, never a trap (voice note or repeated question → Asha). The answers feed identity matching, so a parent's and a friend's enquiries join the student's admission. `onboarding.ts` + 6 tests + docs/proof/onboarding_run.txt |
+| 15e | Beyond: **every channel from one tap** | ✅ | Website and app: "Talk on WhatsApp / Telegram" buttons and scan-to-chat QR codes (WhatsApp, Telegram, Google Form), links editable in Admin → Channels → Public links |
+| 15f | Beyond: **previous records** | ✅ | Desk search by name, any phone format, email, Telegram username or question; each lead shows "Questions asked" and "Earlier records (same phone or email)" with what they asked before |
 | 15c | Beyond: burst load / the same question from thousands of people | ✅ | Answer cache + single-flight (1,000 identical → 1 AI call, tested), one reply per person, retries with back-off, autoscaling workers. Admin → Demo → Load test; Reports → Scale & cost |
 
 ## No lead forgotten — next-best-action engine
@@ -37,7 +40,7 @@
 | 17 | …**on which channel** | ✅ | The channel they actually use; pulled **inside WhatsApp's free 24 h window**; when a window is closed → call task for a human |
 | 18 | …**with what message** | ✅ | AI writes it in their language and register; it passes the Guard |
 | 19 | Based on **behaviour and objections** | ✅ | Playbooks: family approval → invite a parent to the demo; fees → EMI/listed scholarship; job fear → placement process; time → weekend/evening batch; trust → meet the trainer; 3 unanswered follow-ups → stop and call once. `nba.ts` + tests |
-| 20 | Runs without anyone remembering | ✅ | Scheduled every 5 minutes; ⏩ Fast-forward shows a day passing in seconds |
+| 20 | Runs without anyone remembering | ✅ | Scheduled every 5 minutes; ⏩ "Jump to tomorrow 11 AM" shows a day passing in seconds. Even a person who stops halfway through the intake questions gets a nudge. If the AI itself is down, the person gets an instant knowledge-base answer and Asha retries automatically |
 
 ## Counsellor dashboard
 

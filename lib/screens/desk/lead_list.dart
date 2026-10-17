@@ -33,14 +33,7 @@ class _LeadListState extends State<LeadList> {
 
   bool _matches(Map<String, dynamic> d) {
     final q = _query.trim().toLowerCase();
-    if (q.isNotEmpty) {
-      final hay = [
-        d['name'], d['nameLatin'], d['phone'], d['city'], d['assignedTo'], d['studentName'],
-        ...((d['aliases'] as List?)?.cast<String>() ?? const <String>[]),
-        ...((d['summary'] as List?)?.cast<String>() ?? const <String>[]),
-      ].whereType<String>().join(' ').toLowerCase();
-      if (!hay.contains(q)) return false;
-    }
+    if (q.isNotEmpty && !leadMatchesSearch(d, q)) return false;
     switch (_filter) {
       case LeadFilter.all:
         return true;
@@ -76,7 +69,7 @@ class _LeadListState extends State<LeadList> {
               decoration: InputDecoration(
                 isDense: true,
                 prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                hintText: 'Search name, phone, city…',
+                hintText: 'Search name, phone, email, question…',
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
@@ -270,6 +263,10 @@ class _LeadTile extends StatelessWidget {
                           for (final s in sources.take(2)) SmallChip(sourceLabels[s] ?? s),
                           if (aliases.isNotEmpty || d['mergedFromIds'] != null) const SmallChip('🔗 merged', color: AppTheme.ai),
                           if ((d['relatedLeads'] as Map?)?.isNotEmpty == true) const SmallChip('👪 linked', color: AppTheme.info),
+                          if ((d['onboarding'] as Map?)?['step'] != null && (d['onboarding'] as Map?)?['step'] != 'done')
+                            const SmallChip('📝 intake', color: AppTheme.info),
+                          if (d['deliveryIssue'] != null) const SmallChip('⚠️ not delivered', color: AppTheme.hot),
+                          if ((d['ai'] as Map?)?['lastError'] != null) const SmallChip('☁️ AI retrying', color: AppTheme.warm),
                           if (d['selftest'] == true)
                             const SmallChip('self-test')
                           else if (d['burst'] == true)
@@ -313,4 +310,31 @@ class _Message extends StatelessWidget {
           ),
         ),
       );
+}
+
+
+/// Search over everything that identifies a person or their enquiry: names in any script,
+/// every phone (any format: "+91 98765-43210" finds 9876543210), emails, Telegram username,
+/// the questions they asked and the AI summary.
+bool leadMatchesSearch(Map<String, dynamic> d, String query) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  List<String> list(String k) => ((d[k] as List?) ?? const []).map((e) => e is Map ? '${e['text'] ?? e['name'] ?? ''} ${e['phone'] ?? ''} ${e['email'] ?? ''}' : '$e').toList();
+  final fields = [
+    d['name'], d['nameLatin'], d['phone'], d['email'], d['city'], d['assignedTo'], d['studentName'], d['studentPhone'],
+    d['studentEmail'], d['telegramUsername'], d['firstSource'], d['waId'],
+    ...list('aliases'),
+    ...list('summary'),
+    ...list('contactPhones'),
+    ...list('contacts'),
+    ...list('recentQuestions'),
+  ].whereType<String>().map((f) => f.toLowerCase()).toList();
+  if (fields.any((f) => f.contains(q))) return true;
+  // A phone number typed in any format.
+  final digits = q.replaceAll(RegExp(r'[^0-9]'), '');
+  if (digits.length >= 4 && digits.length == q.replaceAll(RegExp(r'[\s+()-]'), '').length) {
+    final tail = digits.length > 10 ? digits.substring(digits.length - 10) : digits;
+    return fields.any((f) => f.replaceAll(RegExp(r'[\s+()-]'), '').contains(tail));
+  }
+  return false;
 }

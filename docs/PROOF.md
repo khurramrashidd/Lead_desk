@@ -10,7 +10,11 @@ Run the tests one by one, or press **Run all, one by one** (about 8–12 minutes
 
 **Code-path proof (already done):** `docs/proof/offline_pipeline_run.txt`.
 - All 20 tests were run against an in-memory database with a scripted AI: 15 pass and 5 warn, all expected (listed under the table).
-- Backend unit tests: `npm test` → **22 passing**.
+- Backend unit tests: `npm test` → **30 passing**.
+- Intake questions (web, real WhatsApp webhook parser, real Telegram update parser) and an AI outage:
+  `docs/proof/onboarding_run.txt` → **23/23 checks**.
+- The "Asha keeps typing" fix (retired model names, per-model thinking level, same-key fallback):
+  `docs/proof/model_fallback_run.txt`.
 
 | # | Sentence in the problem statement | How the system does it | How the test proves it |
 |---|---|---|---|

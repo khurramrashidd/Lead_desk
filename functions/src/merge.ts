@@ -50,6 +50,17 @@ export async function mergeLeads(keepId: string, dupId: string, reason: string, 
   if (!keep.igId && dup.igId) patch.igId = dup.igId;
   if (!keep.studentName && dup.studentName) patch.studentName = dup.studentName;
   if (!keep.studentPhone && dup.studentPhone) patch.studentPhone = dup.studentPhone;
+  if (!keep.studentEmail && dup.studentEmail) patch.studentEmail = dup.studentEmail;
+  if (!keep.interestCourseId && dup.interestCourseId) patch.interestCourseId = dup.interestCourseId;
+  if (!keep.uiLang && dup.uiLang) patch.uiLang = dup.uiLang;
+  // A person who was halfway through the intake questions carries on where they were.
+  if (dup.onboarding && (!keep.onboarding || (keep.onboarding.step === "done" && dup.onboarding.step !== "done" && !keep.recommendation))) {
+    patch.onboarding = JSON.parse(JSON.stringify(dup.onboarding));
+  }
+  if (dup.recentQuestions?.length) {
+    const all = [...(keep.recentQuestions ?? []), ...dup.recentQuestions].sort((a, b) => (a.at?.toMillis?.() ?? 0) - (b.at?.toMillis?.() ?? 0));
+    patch.recentQuestions = all.slice(-6);
+  }
   if (dup.relatedLeads || keep.relatedLeads?.[dupId]) {
     const rel = { ...(dup.relatedLeads ?? {}), ...(keep.relatedLeads ?? {}) };
     delete rel[keepId];
@@ -132,7 +143,11 @@ export async function resolveIdentity(leadId: string): Promise<void> {
     add(await db.collection("leads").where("contactPhones", "array-contains-any", allPhones.slice(0, 30)).limit(20).get());
     if (phone) add(await db.collection("leads").where("phone", "==", phone).limit(10).get()); // older leads without contactPhones
   }
-  if (lead.email) add(await db.collection("leads").where("email", "==", lead.email.trim().toLowerCase()).limit(10).get());
+  const emails = Array.from(new Set([lead.email, lead.studentEmail].map((e) => (e ?? "").trim().toLowerCase()).filter((e) => e.includes("@"))));
+  for (const e of emails) {
+    add(await db.collection("leads").where("email", "==", e).limit(10).get());
+    add(await db.collection("leads").where("studentEmail", "==", e).limit(10).get());
+  }
   if (studentKey && studentKey.length >= 5) add(await db.collection("leads").where("studentKey", "==", studentKey).limit(10).get());
   candidates.delete(leadId);
 
@@ -144,6 +159,7 @@ export async function resolveIdentity(leadId: string): Promise<void> {
     studentName: lead.studentName,
     studentPhone: studentPhone ?? lead.studentPhone,
     contactPhones: allPhones,
+    emails,
     city: lead.city,
   };
   const notDup = new Set((lead as Lead & { notDuplicateOf?: string[] }).notDuplicateOf ?? []);
@@ -158,6 +174,7 @@ export async function resolveIdentity(leadId: string): Promise<void> {
       studentName: other.studentName,
       studentPhone: other.studentPhone,
       contactPhones: other.contactPhones,
+      emails: other.studentEmail ? [other.studentEmail] : [],
       city: other.city,
     });
     if (m.decision === "merge" && !notDup.has(otherId)) {

@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
+import 'data/links.dart';
 import 'firebase_options.dart';
 import 'l10n.dart';
 import 'screens/admin_screen.dart';
@@ -27,6 +28,7 @@ Future<void> main() async {
     await FirebaseAuth.instance.signInAnonymously(); // students chat without an account
   }
   await L10n.load();
+  PublicLinks.watch(); // WhatsApp / Telegram / Google Form links behind the buttons and QR codes
   runApp(const LeadDeskApp());
 }
 

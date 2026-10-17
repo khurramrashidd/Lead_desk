@@ -3,6 +3,7 @@ The real Cloud Functions code (brain, guard, aptitude, scoring, next-best-action
 heartbeat, webhooks, self-test) was run against an in-memory Firestore with the triggers wired as in
 functions/src/index.ts. The AI model was a SCRIPTED STAND-IN, so this proves the code paths, not AI
 quality. The live proof is Admin -> PS3 self-test in the app (real Gemini/Groq, real Firestore).
+Re-run after the final-round changes (intake questions, model fixes, offline fallback): same results.
 
 
 === counselling: PASS (1.0 s)
@@ -83,8 +84,8 @@ quality. The live proof is Admin -> PS3 self-test in the app (real Gemini/Groq, 
   ✅ 1-hour reminder sent automatically
 
 === identity: PASS (2.5 s)
-  ✅ WhatsApp message landed on the SAME lead as the form (merged)  — duplicate 9vhc15nz8ztaazvgs5xn → merged into 9vhc15nz8ztaazvgs5xn
-  ✅ Phone formats normalised to one number  — “093327 06751” and “+91 9332706751” → 9332706751
+  ✅ WhatsApp message landed on the SAME lead as the form (merged)  — duplicate yhjiusn002cjmir9gym8 → merged into yhjiusn002cjmir9gym8
+  ✅ Phone formats normalised to one number  — “096915 68474” and “+91 9691568474” → 9691568474
   ✅ Devanagari name recognised as the same person  — name Rahul Patil; also known as राहुल पाटल
   ✅ Single timeline across channels  — sources: form, whatsapp
   ✅ Father calling from his own phone with Rahul's number → same lead  — self: Rahul Patil | parent: Suresh Patil
@@ -95,26 +96,26 @@ quality. The live proof is Admin -> PS3 self-test in the app (real Gemini/Groq, 
   ✅ Both prospects got an answer
   ✅ Family-approval objection: follow-up planned  — playbook invite_parent
   ✅ Family-approval objection: WHAT → playbook “invite_parent” chosen from the objection  — invite_parent: Prospect raised family approval → invite a parent to the free demo. AI note: keep warm
-  ✅ Family-approval objection: WHEN → Sun, 18 Oct · 10:00 AM IST (never 9 PM–9 AM)
+  ✅ Family-approval objection: WHEN → Sun, 18 Oct · 9:58 AM IST (never 9 PM–9 AM)
   ✅ Family-approval objection: WHICH CHANNEL → whatsapp  — Prospect raised family approval → invite a parent to the free demo. AI note: keep warm
   ✅ Family-approval objection: message written in their language  — Hi! Any questions about the course?
   ✅ Fees objection: follow-up planned  — playbook fees_emi
   ✅ Fees objection: WHAT → playbook “fees_emi” chosen from the objection  — fees_emi: Prospect worried about fees → explain EMI and listed scholarships. AI note: keep warm
-  ✅ Fees objection: WHEN → Sun, 18 Oct · 10:00 AM IST (never 9 PM–9 AM)
+  ✅ Fees objection: WHEN → Sun, 18 Oct · 9:58 AM IST (never 9 PM–9 AM)
   ✅ Fees objection: WHICH CHANNEL → whatsapp  — Prospect worried about fees → explain EMI and listed scholarships. AI note: keep warm
   ✅ Fees objection: message written in their language  — Hi! Any questions about the course?
   ✅ Follow-up sent automatically when due (no counsellor needed)
-  ✅ Next step scheduled after it (cadence)  — invite_parent at Mon, 19 Oct · 10:01 AM IST
+  ✅ Next step scheduled after it (cadence)  — invite_parent at Mon, 19 Oct · 9:59 AM IST
 
 === dashboard: PASS (1.0 s)
   ✅ Lead score 0–100 with an explainable breakdown  — 39 = +16 fit: background/goal/constraints known; +10 intent: asked about fees/batch/admission; +2 engagement: 1 message(s); +15 recency: last wrote within the hour; +8 AI read of intent (55/100); -12 unresolved worries: fees, family_approval, job_fear
   ✅ Three-line summary  — Prospect with concerns. / Worried about: fees, family_approval, job_fear. / Next: address objections, invite to demo.
   ✅ Objections detected: fees, job fear, family approval  — fees, family_approval, job_fear
   ✅ Suggested next message for the counsellor  — Would you like a free demo class?
-  ✅ Assigned to a counsellor (by language)  — Rohan (counsellor) (en)
+  ✅ Assigned to a counsellor (by language)  — Priya (counsellor) (en)
 
 === takeover: PASS (7.0 s)
-  ✅ Asha stopped instantly after take-over  — 0 AI replies after take-over (should be 0); take-over took 0 ms, the worker stood down in 2 ms
+  ✅ Asha stopped instantly after take-over  — 0 AI replies after take-over (should be 0); take-over took 0 ms, the worker stood down in 3 ms
   ✅ Desk shows the lead needs the human  — Counsellor has taken over: reply from the desk
   ✅ Counsellor's reply lands in the same conversation
   ✅ Hand back to Asha
@@ -151,4 +152,4 @@ quality. The live proof is Admin -> PS3 self-test in the app (real Gemini/Groq, 
   ✅ Still two separate leads (identity ≠ question)
 
 SUMMARY [["counselling","pass","1.0s"],["languages","pass","1.1s"],["codemix","pass","1.0s"],["register","pass","1.0s"],["voice","warn","1.0s"],["profile","pass","2.0s"],["kb","pass","1.0s"],["guard","pass","4.0s"],["aptitude","pass","6.0s"],["recommend","pass","2.0s"],["booking","warn","2.0s"],["identity","pass","2.5s"],["nba","pass","1.0s"],["dashboard","pass","1.0s"],["takeover","pass","7.0s"],["channels","pass","0.0s"],["telephony","warn","2.0s"],["instagram","warn","1.5s"],["reports","warn","0.0s"],["scale","pass","1.0s"]]
-model calls: 36  trigger errors: 0
+model calls: 35  trigger errors: 0

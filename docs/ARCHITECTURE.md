@@ -11,6 +11,8 @@ Use this page in the mentor round. GitHub draws the diagrams automatically.
 5. **No lead is forgotten.** A heartbeat every 5 minutes sends demo reminders and next-best-action follow-ups, outside quiet hours.
 6. **Counsellors work from a live desk** (Flutter, Android + web): score, 3-line summary, objections, suggested message, one-tap take-over.
 7. **Staff access is controlled.** Staff sign in with Google or email (one merged account), and an admin approves each counsellor.
+8. **Intake first, then counselling.** A new WhatsApp / Telegram / web chat first answers four scripted questions (who is this for, student's name, mobile or email, course list as buttons) in `onboarding.ts`, instantly and without an AI call; then Asha counsels about the course they picked.
+9. **Asha never goes silent.** Retired model names are mapped to live ones, each Gemini key falls back through the live Gemini models, a reply has a 75-second budget, and if every provider fails the person gets an instant knowledge-base answer (`offline.ts`) while the AI retries.
 
 ---
 

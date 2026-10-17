@@ -37,8 +37,8 @@ interface WaMessage {
   text?: { body: string };
   audio?: { id: string };
   voice?: { id: string };
-  button?: { text: string };
-  interactive?: { button_reply?: { title: string }; list_reply?: { title: string } };
+  button?: { text: string; payload?: string };
+  interactive?: { button_reply?: { id?: string; title: string }; list_reply?: { id?: string; title: string } };
 }
 
 async function handleWhatsApp(value: any): Promise<void> {
@@ -60,7 +60,12 @@ async function handleWhatsApp(value: any): Promise<void> {
         msg.text = "🎤 Voice note";
       } else msg.text = "(voice note could not be downloaded)";
     } else if (m.button?.text) msg.text = m.button.text;
-    else if (m.interactive) msg.text = m.interactive.button_reply?.title ?? m.interactive.list_reply?.title ?? "(reply)";
+    else if (m.interactive) {
+      // A tapped button / list row: keep its id so the intake questions match it exactly.
+      const pick = m.interactive.button_reply ?? m.interactive.list_reply;
+      msg.text = pick?.title ?? "(reply)";
+      if (pick?.id) msg.meta.choiceId = pick.id;
+    }
     else msg.text = `(${m.type} message)`;
     await addInbound(leadId, "whatsapp", msg, { waId: m.from });
   }

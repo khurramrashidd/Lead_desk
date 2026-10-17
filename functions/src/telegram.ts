@@ -49,7 +49,7 @@ async function downloadVoice(fileId: string): Promise<{ b64: string; mime: strin
 interface TgMessage {
   message_id: number;
   chat: { id: number };
-  from?: { first_name?: string; last_name?: string; username?: string };
+  from?: { first_name?: string; last_name?: string; username?: string; language_code?: string };
   text?: string;
   caption?: string;
   voice?: { file_id: string };
@@ -67,9 +67,10 @@ export async function handleTelegramUpdate(body: { message?: TgMessage }): Promi
 
   const msg: { id: string; text?: string; audioB64?: string; audioMime?: string; meta: Record<string, unknown> } = {
     id: `tg_${chatId}_${m.message_id}`,
-    meta: { telegramMessageId: m.message_id },
+    meta: { telegramMessageId: m.message_id, ...(m.from?.language_code ? { langHint: m.from.language_code } : {}) },
   };
-  if (m.text === "/start") {
+  if (m.text?.startsWith("/start")) {
+    // From the website QR / "Talk on Telegram" button (t.me/<bot>?start=web).
     msg.text = "Hi";
   } else if (m.voice || m.audio) {
     const media = await downloadVoice((m.voice ?? m.audio)!.file_id);

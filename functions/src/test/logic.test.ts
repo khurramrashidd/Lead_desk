@@ -288,3 +288,140 @@ test("if the AI fails, the next caller takes over instead of waiting forever", a
   assert.equal(r.value.ok, 1);
   assert.equal(calls, 2);
 });
+
+// ------------------------------------------------------------ intake questions
+import { advanceOnboarding, parseContact, parseCourse, parseName, parseRelation, detectLang, relationOptions, courseOptions, onboardingBrief } from "../onboarding";
+import { fixModel, supportsMinimalThinking } from "../ai";
+import { offlineAnswer, offlineIntent } from "../offline";
+
+const COURSES = [
+  { id: "py", name: "Python Foundations", durationWeeks: 6, feeInr: 12000 },
+  { id: "fsj", name: "Full Stack Java Developer", durationWeeks: 24, feeInr: 65000 },
+  { id: "mern", name: "MERN Full Stack (JavaScript)", durationWeeks: 20, feeInr: 55000 },
+  { id: "ds", name: "Data Science & AI with Python", durationWeeks: 24, feeInr: 75000 },
+];
+const base = { courses: COURSES, instituteName: "SechTummit Trainers" };
+
+test("intake: who is writing, in three languages, typed or tapped", () => {
+  assert.equal(parseRelation("I'm the student"), "self");
+  assert.equal(parseRelation("", "rel:parent"), "parent");
+  assert.equal(parseRelation("2"), "parent");
+  assert.equal(parseRelation("my son"), "parent");
+  assert.equal(parseRelation("मैं पैरेंट हूँ"), "parent");
+  assert.equal(parseRelation("मी पालक आहे"), "parent");
+  assert.equal(parseRelation("मी विद्यार्थी आहे"), "self");
+  assert.equal(parseRelation("मित्रासाठी"), "friend");
+  assert.equal(parseRelation("for my dost"), "friend");
+  assert.equal(parseRelation("my sister"), "sibling");
+  assert.equal(parseRelation("what are the fees"), undefined);
+});
+
+test("intake: names, contacts and course picks are parsed safely", () => {
+  assert.equal(parseName("my name is rahul patil"), "Rahul Patil");
+  assert.equal(parseName("Imran Shaikh"), "Imran Shaikh"); // "Im" is not a prefix here
+  assert.equal(parseName("मेरा नाम राहुल है"), "राहुल");
+  assert.equal(parseName("मी स्नेहा आहे"), "स्नेहा");
+  assert.equal(parseName("what is the fee?"), undefined);
+  assert.equal(parseName("9876543210"), undefined);
+  assert.deepEqual(parseContact("his number is +91 98765-43210"), { phone: "9876543210" });
+  assert.deepEqual(parseContact("Rahul.P@Gmail.com"), { email: "rahul.p@gmail.com" });
+  assert.deepEqual(parseContact("९८७६५४३२१०"), { phone: "9876543210" });
+  assert.deepEqual(parseContact("tomorrow"), {});
+  assert.equal(parseCourse("", COURSES, "course:fsj"), "fsj");
+  assert.equal(parseCourse("2", COURSES), "fsj");
+  assert.equal(parseCourse("java", COURSES), "fsj");
+  assert.equal(parseCourse("Python Foundations", COURSES), "py");
+  assert.equal(parseCourse("Not sure, help me choose", COURSES), "help");
+  assert.equal(parseCourse("blockchain", COURSES), undefined);
+  assert.equal(detectLang("मला फी किती आहे ते सांगा"), "mr");
+  assert.equal(detectLang("मुझे फीस कितनी है बताइए"), "hi");
+  assert.equal(detectLang("hello"), undefined);
+});
+
+test("intake: WhatsApp buttons fit Meta's limits (3 buttons ≤ 20 chars, list rows ≤ 24)", () => {
+  for (const l of ["en", "hi", "mr"] as const) {
+    const opts = relationOptions(l);
+    assert.equal(opts.length, 3);
+    for (const o of opts) assert.ok([...o.label].length <= 20, `${o.label} too long`);
+    const c = courseOptions(l, COURSES);
+    assert.ok(c.length <= 10);
+    assert.equal(c[c.length - 1].id, "course:help");
+    assert.ok([...c[c.length - 1].label].length <= 24);
+  }
+});
+
+test("intake: parent on WhatsApp → name → phone → course → Asha talks about that course", () => {
+  let r = advanceOnboarding(null, { ...base, text: "Hi", phoneKnown: true });
+  assert.equal(r.state.step, "relation");
+  assert.match(r.reply!.text, /who is this enquiry for/i);
+  assert.equal(r.reply!.options.length, 3);
+  r = advanceOnboarding(r.state, { ...base, text: "I'm a parent", choiceId: "rel:parent", phoneKnown: true });
+  assert.equal(r.state.relation, "parent");
+  assert.match(r.reply!.text, /student's name/);
+  r = advanceOnboarding(r.state, { ...base, text: "Rahul Patil", phoneKnown: true });
+  assert.equal(r.state.studentName, "Rahul Patil");
+  assert.equal(r.state.step, "contact"); // the parent's number is not the student's
+  r = advanceOnboarding(r.state, { ...base, text: "98765 43210", phoneKnown: true });
+  assert.equal(r.state.phone, "9876543210");
+  assert.equal(r.state.step, "course");
+  assert.equal(r.reply!.options.length, COURSES.length + 1);
+  r = advanceOnboarding(r.state, { ...base, text: "Full Stack Java Develope", choiceId: "course:fsj", phoneKnown: true });
+  assert.equal(r.reply, undefined); // Asha answers now
+  assert.equal(r.state.step, "done");
+  assert.equal(r.state.courseId, "fsj");
+  const brief = onboardingBrief(r.state, COURSES);
+  assert.match(brief, /Full Stack Java Developer/);
+  assert.match(brief, /Do NOT ask again/);
+});
+
+test("intake: a student on WhatsApp skips the phone step; a question first is kept for Asha", () => {
+  let r = advanceOnboarding(null, { ...base, text: "Full stack java ki fees kitni hai?", phoneKnown: true });
+  assert.equal(r.state.firstQuestion, "Full stack java ki fees kitni hai?");
+  assert.match(r.reply!.text, /answer your question/);
+  r = advanceOnboarding(r.state, { ...base, text: "1", phoneKnown: true });
+  r = advanceOnboarding(r.state, { ...base, text: "I am Sneha", phoneKnown: true });
+  assert.equal(r.state.studentName, "Sneha");
+  assert.equal(r.state.step, "course");
+  r = advanceOnboarding(r.state, { ...base, text: "help me choose", phoneKnown: true });
+  assert.equal(r.state.wantsHelp, true);
+  assert.match(onboardingBrief(r.state, COURSES), /fees kitni hai/);
+});
+
+test("intake: never a trap — voice notes and repeated questions go straight to Asha", () => {
+  const v = advanceOnboarding(null, { ...base, text: "", isVoice: true });
+  assert.equal(v.state.step, "done");
+  assert.equal(v.reply, undefined);
+  let r = advanceOnboarding(null, { ...base, text: "hello" });
+  r = advanceOnboarding(r.state, { ...base, text: "just tell me" });
+  assert.ok(r.reply); // asked again once
+  r = advanceOnboarding(r.state, { ...base, text: "why do you need this?" });
+  assert.equal(r.state.step, "done");
+  // web chat: Asha's greeting is already on screen, so no second introduction
+  const w = advanceOnboarding(null, { ...base, text: "What is the fee?", introShown: true, langHint: "hi" });
+  assert.doesNotMatch(w.reply!.text, /मैं आशा हूँ/);
+  assert.equal(w.state.lang, "hi");
+  // Marathi first message → Marathi questions
+  const m = advanceOnboarding(null, { ...base, text: "माझ्या मुलासाठी कोर्स हवा आहे" });
+  assert.equal(m.state.lang, "mr");
+  assert.equal(m.state.relation, "parent");
+  assert.match(m.reply!.text, /विद्यार्थ्याचं नाव/);
+});
+
+test("retired model names are mapped to live ones", () => {
+  assert.equal(fixModel("gemini-3.5-flash"), "gemini-3.6-flash");
+  assert.equal(fixModel("llama-3.3-70b-versatile"), "openai/gpt-oss-120b");
+  assert.equal(fixModel("gemini-3.8-flash"), "gemini-3.8-flash");
+  assert.equal(supportsMinimalThinking("gemini-3.6-flash"), true);
+  assert.equal(supportsMinimalThinking("gemini-3.5-flash-lite"), true);
+  assert.equal(supportsMinimalThinking("gemini-3.8-flash"), false);
+});
+
+test("AI down: Asha still answers from the knowledge base", () => {
+  const kb = { instituteName: "X", city: "Pune", courses: [{ id: "fsj", name: "Full Stack Java Developer", durationWeeks: 24, mode: "Hybrid", feeInr: 65000, emi: { months: 6, perMonthInr: 11000 }, nextBatch: "3 Nov 2026" }] } as KnowledgeBase;
+  assert.equal(offlineIntent("Full Stack Java ki fees kitni hai?"), "fees");
+  const a = offlineAnswer(kb, "Full Stack Java ki fees kitni hai?", "hinglish");
+  assert.match(a, /₹65,000/);
+  assert.match(a, /6 × ₹11,000/);
+  assert.ok(checkReply(a, kb, ["fees?"]).ok, "offline answer must pass the Guard");
+  assert.match(offlineAnswer(kb, "batch kab start hogi", "en"), /3 Nov 2026/);
+});

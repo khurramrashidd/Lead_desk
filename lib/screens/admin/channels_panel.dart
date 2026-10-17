@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app_theme.dart';
+import '../../data/links.dart';
 import '../../services/api.dart';
 import '../../services/ops_service.dart';
 
@@ -22,6 +23,7 @@ class _ChannelsPanelState extends State<ChannelsPanel> {
   };
   bool _loaded = false;
   bool _busy = false;
+  bool _onboarding = true;
   String _serviceAccount = '';
   final _status = <String, String>{};
 
@@ -37,6 +39,7 @@ class _ChannelsPanelState extends State<ChannelsPanel> {
         }
         if (_c['waVerifyToken']!.text.isEmpty) _c['waVerifyToken']!.text = 'leaddesk-verify-123';
         if (_c['intakeSecret']!.text.isEmpty) _c['intakeSecret']!.text = 'leaddesk-intake-123';
+        _onboarding = d['onboarding'] != false;
         _loaded = true;
       });
     }).catchError((Object e) {
@@ -81,6 +84,24 @@ class _ChannelsPanelState extends State<ChannelsPanel> {
     if (!_loaded) return const LinearProgressIndicator();
     final secret = _c['intakeSecret']!.text.trim();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const _PublicLinksCard(),
+      Card(
+        margin: const EdgeInsets.only(bottom: 14),
+        child: SwitchListTile(
+          value: _onboarding,
+          title: const Text('Intake questions before counselling', style: TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: const Text(
+            'New chats on WhatsApp, Telegram and the website first get: who is this for (student / parent / friend) → '
+            'student\'s name → mobile or email → the course list. Then Asha counsels about the chosen course. '
+            'Turn off to let Asha answer the first message directly.',
+          ),
+          onChanged: (v) async {
+            setState(() => _onboarding = v);
+            await OpsService.saveChannels({'onboarding': v});
+            _snack(v ? '✅ Intake questions on' : 'Intake questions off');
+          },
+        ),
+      ),
       _Channel(
         color: const Color(0xFF25D366),
         icon: Icons.chat_rounded,
@@ -280,6 +301,91 @@ class _Channel extends StatelessWidget {
             ),
         if (status != null) ...[const SizedBox(height: 8), Text(status!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))],
       ]),
+    );
+  }
+}
+
+
+/// The links behind "Talk on WhatsApp", "Talk on Telegram" and the website QR codes.
+class _PublicLinksCard extends StatefulWidget {
+  const _PublicLinksCard();
+
+  @override
+  State<_PublicLinksCard> createState() => _PublicLinksCardState();
+}
+
+class _PublicLinksCardState extends State<_PublicLinksCard> {
+  late final _wa = TextEditingController(text: PublicLinks.current.value.whatsappNumber);
+  late final _waText = TextEditingController(text: PublicLinks.current.value.whatsappText);
+  late final _tg = TextEditingController(text: PublicLinks.current.value.telegramBot);
+  late final _form = TextEditingController(text: PublicLinks.current.value.formUrl);
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    for (final c in [_wa, _waText, _tg, _form]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final l = PublicLinks.from({'whatsappNumber': _wa.text, 'whatsappText': _waText.text, 'telegramBot': _tg.text, 'formUrl': _form.text});
+      await PublicLinks.save(l);
+      if (mounted) {
+        setState(() {
+          _wa.text = l.whatsappNumber;
+          _tg.text = l.telegramBot;
+          _form.text = l.formUrl;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Links saved: website buttons and QR codes updated')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            const Icon(Icons.qr_code_2, color: AppTheme.indigo),
+            const SizedBox(width: 10),
+            Expanded(child: Text('Public links: website buttons + QR codes', style: context.texts.titleMedium)),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            'What a visitor opens from "Talk on WhatsApp", "Talk on Telegram" and the scan-to-chat QR codes. '
+            'WhatsApp must be the number connected to the Cloud API above (with a Meta test number, add each judge\'s '
+            'number under API Setup → "To" so Asha\'s replies are delivered).',
+            style: context.texts.bodySmall?.copyWith(fontSize: 12.5),
+          ),
+          const SizedBox(height: 12),
+          Wrap(spacing: 10, runSpacing: 10, children: [
+            SizedBox(width: 220, child: TextField(controller: _wa, decoration: const InputDecoration(labelText: 'WhatsApp number (with country code)', hintText: '15551993241', isDense: true))),
+            SizedBox(width: 220, child: TextField(controller: _waText, decoration: const InputDecoration(labelText: 'Pre-filled WhatsApp message', isDense: true))),
+            SizedBox(width: 220, child: TextField(controller: _tg, decoration: const InputDecoration(labelText: 'Telegram bot (@name or t.me link)', isDense: true))),
+            SizedBox(width: 320, child: TextField(controller: _form, decoration: const InputDecoration(labelText: 'Google Form link', isDense: true))),
+          ]),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: const Icon(Icons.save_rounded, size: 18),
+              label: const Text('Save links'),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }

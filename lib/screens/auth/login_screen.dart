@@ -340,7 +340,7 @@ class _Showcase extends StatelessWidget {
       ('🎧', 'Take over in one tap', 'Asha stops the moment you step in, and picks up again when you hand back.'),
     ];
     return Container(
-      decoration: const BoxDecoration(gradient: AppTheme.heroGradient),
+      decoration: const BoxDecoration(gradient: AppTheme.brandGradient),
       padding: const EdgeInsets.all(48),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

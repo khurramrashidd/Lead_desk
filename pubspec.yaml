@@ -46,6 +46,8 @@ dependencies:
   http: ^1.6.0
   geolocator: ^14.1.1
   qr_flutter: ^4.1.0
+  # Plays a recorded voice note back before it is sent (web + Android).
+  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:

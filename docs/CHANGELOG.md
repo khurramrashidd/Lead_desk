@@ -2,6 +2,41 @@
 
 Newest first. Earlier history is in the git log.
 
+## 17 Oct 2026 (3) — final round: intake questions, QR codes, light site, voice preview (backend changed: run `deploy`)
+
+- **"Asha keeps typing" fixed at the root.** Google never shipped `gemini-3.5-flash` (live models today:
+  `gemini-3.6-flash`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`), and Groq shut down
+  `llama-3.3-70b-versatile` for free accounts on 16 Aug 2026. Both were our defaults. Now:
+  - retired model names (in Admin or `.env`) are mapped to live ones automatically;
+  - each Gemini key falls back through the other live Gemini models before the next provider;
+  - thinking level is set per model (3.8 Flash refuses "minimal");
+  - one reply never waits more than 75 s in total;
+  - if every provider fails, the person gets an **instant answer from the knowledge base**
+    (fees, courses, batches, placement, demo slots), the AI retries automatically, and the desk shows why
+    (red banner + "Asha could not reach the AI" card + Admin → AI engine "last failure").
+  - The chat never shows endless "typing…": after 25 s "taking longer", after 75 s other ways to reach us.
+- **Intake questions on WhatsApp, Telegram and the web chat** (Admin → Channels switch, default on):
+  who is this for (student / parent / friend) → student's name → mobile or email (skipped when WhatsApp
+  already gave the number) → the course list → Asha talks about the chosen course (or counsels if none fits).
+  Buttons on WhatsApp (reply buttons + list), a keyboard on Telegram (with "share my number"), chips on the
+  web; typed answers in English, हिंदी and मराठी work too. A question asked first is kept and answered after
+  the intake; a voice note goes straight to Asha. Nobody gets stuck: two misses hand over to Asha.
+  Someone who stops halfway gets a nudge 2 hours later (never at night).
+- **QR codes + "Talk on WhatsApp / Telegram"** on the website home, the ☰ menu, the Contact page, the chat
+  menu, the judges' hub and Admin → Demo. Links are editable in **Admin → Channels → Public links**
+  (defaults: WhatsApp +1 555 199 3241, @LeadDeskIndiaBot, the Google Form).
+- **Website redesigned**: light by default (no dark sections until you switch to dark mode), a short home
+  (headline, Asha/WhatsApp/Telegram buttons, scan-to-chat, courses), everything else as pages in the ☰ menu;
+  the top bar is always visible and tappable on phones.
+- **Voice notes: listen before sending** (record → stop → play/pause → send or delete).
+- **Desk**: search by name, any phone format, email, Telegram username or the questions asked; each lead shows
+  "Questions asked", "Intake answers" and **"Earlier records (same phone or email)"** with what they asked;
+  undelivered WhatsApp/Telegram replies are flagged with the reason (e.g. Meta test-number allow list).
+- Identity also matches the student's email given by a parent.
+- Tests: 30 backend unit tests; offline end-to-end run of the intake on web, WhatsApp and Telegram plus an AI
+  outage: 23/23 checks (docs/proof/onboarding_run.txt). The 20 self-test scenarios still pass offline.
+- New Flutter package: `audioplayers` (voice preview). `flutter run` fetches it automatically.
+
 ## 17 Oct 2026 (2) — PS3 self-test with proof; deploy.bat fix (backend changed: run `deploy`)
 
 - **Fixed:** `deploy` failed with "Could not read package.json" (npm on Windows ignores `--prefix` for

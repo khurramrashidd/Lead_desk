@@ -59,6 +59,8 @@ service cloud.firestore {
       allow read: if isCounsellor() && !(doc in ['ai', 'channels']) || isAdmin();
       allow write: if isAdmin() || (isCounsellor() && doc == 'demo');
     }
+    // WhatsApp / Telegram / Google Form links behind the website QR codes: public, admin-edited.
+    match /config/public { allow read: if true; }
     match /events/{doc} { allow read: if isCounsellor(); allow write: if false; } // written by Cloud Functions only
     match /stats/{doc}  { allow read: if isCounsellor(); allow write: if false; } // sharded counters, Cloud Functions only
     // PS3 self-test runs: an admin queues one, a Cloud Function runs it and writes the proof.
