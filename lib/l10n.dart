@@ -259,4 +259,11 @@ const Map<String, List<String>> _strings = {
     'हा फोटो खूप मोठा आहे. कृपया स्क्रीनशॉट पाठवा.',
   ],
   'pay.done': ['Receipt sent', 'रसीद भेज दी', 'पावती पाठवली'],
+  'chat.intent': [
+    'Would you like to know about our courses first, or do you already know which course you want to join?',
+    'क्या आप पहले हमारे कोर्स के बारे में जानना चाहेंगे, या आपको पता है कि कौन सा कोर्स जॉइन करना है?',
+    'आधी आमच्या कोर्सबद्दल जाणून घ्यायचं आहे, की कोणता कोर्स करायचा हे तुम्हाला माहिती आहे?',
+  ],
+  'chat.intentAsk': ['💬 Ask about courses first', '💬 पहले कोर्स के बारे में पूछें', '💬 आधी कोर्सबद्दल विचारा'],
+  'chat.intentEnroll': ['✅ I know my course: enroll', '✅ कोर्स पता है: एनरोल करें', '✅ कोर्स ठरला आहे: प्रवेश घ्या'],
 };

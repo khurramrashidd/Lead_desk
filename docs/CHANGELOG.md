@@ -2,6 +2,14 @@
 
 Newest first. Earlier history is in the git log.
 
+## 17 Oct 2026 (8) — "ask first or enroll directly", live Verified state (run `deploy all`)
+
+- Every new chat (after the language) asks: **💬 Ask about courses first** or **✅ I know my course: enroll**.
+  Enroll goes straight to the enrolment form; Ask starts the usual intake and counselling. If the first message
+  is already a real question, it is simply answered. The website shows the same two buttons first.
+- Admin: the enrolment card updates live; once verified it shows **✅ Verified · course allotted** with the
+  admission ID, and the Verify / Not verified buttons disappear.
+
 ## 17 Oct 2026 (7) — enrolment form, email code, admission IDs, registered students (run `deploy all`)
 
 - **Enroll now → compulsory enrolment form in the chat** (WhatsApp, Telegram, website): name, mobile, WhatsApp,

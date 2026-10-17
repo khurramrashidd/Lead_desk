@@ -39,6 +39,9 @@ export interface ChatSession {
   lang?: Lang;
   startedAt?: Timestamp;
   awaitingLang?: boolean;
+  /** New chat: ask "learn about courses first, or enroll directly?" before anything else. */
+  needIntent?: boolean;
+  intent?: "ask" | "enroll";
   /** The message the language question was asked for (so a duplicate run does not answer it early). */
   promptedFor?: string;
   expiresAt?: Timestamp;
@@ -84,6 +87,13 @@ const TXT: Record<string, Record<Lang, string>> = {
     mr: "⏳ 2 मिनिटं उत्तर न आल्याने ही चॅट बंद झाली आहे. पुन्हा सुरू करण्यासाठी कोणताही मेसेज पाठवा.",
   },
   enrollBtn: { en: "✅ Enroll now", hi: "✅ अभी एनरोल करें", mr: "✅ आत्ता प्रवेश घ्या" },
+  intentAsk: {
+    en: "Would you like to know about our courses first, or do you already know which course you want to join?",
+    hi: "क्या आप पहले हमारे कोर्स के बारे में जानना चाहेंगे, या आपको पता है कि कौन सा कोर्स जॉइन करना है?",
+    mr: "आधी आमच्या कोर्सबद्दल जाणून घ्यायचं आहे, की कोणता कोर्स करायचा हे तुम्हाला माहिती आहे?",
+  },
+  intentAskBtn: { en: "💬 Ask about courses first", hi: "💬 पहले कोर्स के बारे में पूछें", mr: "💬 आधी कोर्सबद्दल विचारा" },
+  intentEnrollBtn: { en: "✅ I know my course: enroll", hi: "✅ कोर्स पता है: एनरोल करें", mr: "✅ कोर्स ठरला आहे: प्रवेश घ्या" },
   pickCourse: {
     en: "Great! Which course would you like to enroll in?",
     hi: "बढ़िया! आप किस कोर्स में एनरोल करना चाहते हैं?",
@@ -160,13 +170,35 @@ export function guessLang(text: string, hint?: string): Lang {
 }
 
 export function looksLikeEnroll(text: string, choiceId?: string): boolean {
-  if (choiceId === "enroll:yes") return true;
+  if (choiceId === "enroll:yes" || choiceId === "intent:enroll") return true;
   const t = text.trim().toLowerCase();
   return (
     /^(✅\s*)?(enrol+|enrol+ now|i want to enrol+|enrol+ me|join now|i want to join|admission)$/.test(t) ||
     /^✅\s*(अभी एनरोल करें|आत्ता प्रवेश घ्या)$/.test(text.trim()) ||
     /\b(enrol+ (now|me)|want to enrol+|admission (lena|chahiye|confirm)|join karna hai)\b/.test(t)
   );
+}
+
+export function intentOptions(lang?: string): ObOption[] {
+  return [
+    { id: "intent:ask", label: ft("intentAskBtn", lang) },
+    { id: "intent:enroll", label: ft("intentEnrollBtn", lang) },
+  ];
+}
+
+export function parseIntent(text: string, choiceId?: string): "ask" | "enroll" | undefined {
+  if (choiceId === "intent:ask") return "ask";
+  if (choiceId === "intent:enroll" || looksLikeEnroll(text, choiceId)) return "enroll";
+  const t = text.trim();
+  if ((["en", "hi", "mr"] as const).some((l) => TXT.intentAskBtn[l] === t)) return "ask";
+  if ((["en", "hi", "mr"] as const).some((l) => TXT.intentEnrollBtn[l] === t)) return "enroll";
+  return undefined;
+}
+
+/** "Hi", "hello", "नमस्ते", "ok"… : nothing asked yet. */
+export function isGreeting(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return !t || t.length <= 3 || /^(hi+|hello+|hey+|helo|hlo|namaste|namaskar|good (morning|afternoon|evening)|start|ok|okay)[\s!.]*$/.test(t) || /^(नमस्ते|नमस्कार|हाय|हेलो|हॅलो)[\s!.।]*$/.test(t);
 }
 
 export function looksLikePaid(text: string): boolean {
@@ -283,6 +315,8 @@ export async function flowGate(g: GateInput): Promise<GateResult | null> {
           status: "active",
           startedAt: Timestamp.fromMillis((msg.createdAt?.toMillis?.() ?? Date.now()) - 1),
           awaitingLang: true,
+          needIntent: true,
+          intent: FieldValue.delete(),
           promptedFor: msgId,
           lang: FieldValue.delete(),
           closedAt: FieldValue.delete(),
@@ -300,12 +334,12 @@ export async function flowGate(g: GateInput): Promise<GateResult | null> {
     const uiLang = typeof meta.uiLang === "string" ? parseLang(meta.uiLang) ?? (["en", "hi", "mr"].includes(meta.uiLang) ? (meta.uiLang as Lang) : undefined) : undefined;
     if (uiLang) {
       // The website asks the language itself before the first message.
-      await ref.set({ uiLang, session: { status: "active", lang: uiLang, startedAt, awaitingLang: false, closedAt: FieldValue.delete(), closedReason: FieldValue.delete() } }, { merge: true });
+      await ref.set({ uiLang, session: { status: "active", lang: uiLang, startedAt, awaitingLang: false, needIntent: true, intent: FieldValue.delete(), closedAt: FieldValue.delete(), closedReason: FieldValue.delete() } }, { merge: true });
       return { rerun: true };
     }
     const replyId = await say(leadId, msg.channel, ft("pickLang", "en"), { kind: "language", sessionControl: true, automatic: true }, LANG_OPTIONS);
     await ref.set(
-      { session: { status: "active", startedAt, awaitingLang: true, promptedFor: msgId, lang: FieldValue.delete(), closedAt: FieldValue.delete(), closedReason: FieldValue.delete() } },
+      { session: { status: "active", startedAt, awaitingLang: true, needIntent: true, intent: FieldValue.delete(), promptedFor: msgId, lang: FieldValue.delete(), closedAt: FieldValue.delete(), closedReason: FieldValue.delete() } },
       { merge: true },
     );
     return { reply: { text: ft("pickLang", "en"), channel: msg.channel, options: LANG_OPTIONS, msgId: replyId } };
@@ -322,6 +356,29 @@ export async function flowGate(g: GateInput): Promise<GateResult | null> {
   }
 
   const lang = leadLang(lead);
+
+  // ---- 4b. "Ask about courses first, or enroll directly?" (once per new chat) ----
+  if (session.needIntent) {
+    const intent = parseIntent(text, choiceId);
+    if (intent === "enroll") {
+      await ref.set({ session: { needIntent: false, intent: "enroll" } }, { merge: true });
+      return startForm(g, enrollment, lang);
+    }
+    if (intent === "ask") {
+      // Kept as a plain "Hi", so Asha starts the normal conversation (intake, counselling).
+      await msgRef.set({ text: "Hi", meta: { originalText: text, intent: "ask" } }, { merge: true });
+      await ref.set({ session: { needIntent: false, intent: "ask" } }, { merge: true });
+      return { rerun: true };
+    }
+    if (isGreeting(text) && !hasImage && !msg.audioB64) {
+      const options = intentOptions(lang);
+      const replyId = await say(leadId, msg.channel, ft("intentAsk", lang), { kind: "intent", sessionControl: true }, options);
+      await ref.set({ ai: { lastAnsweredId: msgId }, lastMessageAt: FieldValue.serverTimestamp() }, { merge: true });
+      return { reply: { text: ft("intentAsk", lang), channel: msg.channel, options, lang, msgId: replyId } };
+    }
+    // They started with a real question: that is "ask first".
+    await ref.set({ session: { needIntent: false, intent: "ask" } }, { merge: true });
+  }
 
   // ---- 5. Enrolment: form → summary → email code → UPI QR ----
   if (enrollment && FORM_STATES.includes(enrollment.status)) return formStep(g, enrollment, text, choiceId, lang);

@@ -515,7 +515,22 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
   Widget _welcome() => ListView(
         padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
         children: [
-          MessageBubble(role: 'ai', text: '$_greeting\n\n${tr('chat.who')}'),
+          MessageBubble(role: 'ai', text: '$_greeting\n\n${tr('chat.intent')}'),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            FilledButton.tonalIcon(
+              onPressed: _sending ? null : () => _sendText(tr('chat.intentAsk'), 'intent:ask'),
+              icon: const Icon(Icons.forum_rounded, size: 18),
+              label: Text(tr('chat.intentAsk')),
+            ),
+            FilledButton.icon(
+              onPressed: _sending ? null : () => _sendText(tr('chat.intentEnroll'), 'intent:enroll'),
+              icon: const Icon(Icons.how_to_reg_rounded, size: 18),
+              label: Text(tr('chat.intentEnroll')),
+            ),
+          ]),
+          const SizedBox(height: 18),
+          MessageBubble(role: 'ai', text: tr('chat.who')),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, children: [
             for (final r in const ['self', 'parent', 'friend'])

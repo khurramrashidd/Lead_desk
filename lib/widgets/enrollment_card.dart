@@ -91,6 +91,7 @@ class _EnrollmentCardState extends State<EnrollmentCard> {
     setState(() => _busy = true);
     try {
       final r = await Repo.verifyEnrollment(widget.leadId, approve: approve, courseId: _courseId, note: note);
+      if (approve && mounted) setState(() => _verifiedHere = true);
       messenger.showSnackBar(SnackBar(content: Text('✅ $r')));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
@@ -99,13 +100,26 @@ class _EnrollmentCardState extends State<EnrollmentCard> {
     }
   }
 
+  bool _verifiedHere = false;
+
+  /// Live: the card follows the lead, so "Verified" shows the moment it is saved.
   @override
   Widget build(BuildContext context) {
-    final e = widget.enrollment;
-    final status = '${e['status'] ?? ''}';
+    return StreamBuilder(
+      stream: Repo.watchLead(widget.leadId),
+      builder: (context, snap) {
+        final live = (snap.data?.data()?['enrollment'] as Map?)?.cast<String, dynamic>();
+        return _body(context, live ?? widget.enrollment);
+      },
+    );
+  }
+
+  Widget _body(BuildContext context, Map<String, dynamic> e) {
+    final status = _verifiedHere && e['status'] != 'verified' ? 'verified' : '${e['status'] ?? ''}';
     final admin = StaffScope.isAdmin(context);
     final at = Ist.fromTimestamp(e['receiptAt']) ?? Ist.fromTimestamp(e['startedAt']);
-    final canDecide = admin && (status == 'receipt_received' || status == 'rejected' || status == 'awaiting_receipt');
+    final verified = status == 'verified';
+    final canDecide = admin && !verified && (status == 'receipt_received' || status == 'rejected' || status == 'awaiting_receipt');
     final form = (e['form'] as Map?)?.cast<String, dynamic>() ?? const {};
     const fields = [
       ('name', 'Name'),
@@ -139,10 +153,23 @@ class _EnrollmentCardState extends State<EnrollmentCard> {
           if (e['courseName'] != null) Text('${e['courseName']}', style: const TextStyle(fontSize: 13)),
           if (at != null) Text(Ist.full(at), style: TextStyle(fontSize: 12, color: context.scheme.onSurfaceVariant)),
         ]),
-        if (e['admissionId'] != null) ...[
-          const SizedBox(height: 6),
-          SelectableText('🆔 Admission ID: ${e['admissionId']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-        ],
+        if (verified)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.success.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.success.withValues(alpha: 0.5)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('✅ Verified · course allotted', style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.success, fontSize: 14)),
+              const SizedBox(height: 4),
+              if (e['admissionId'] != null) SelectableText('🆔 Admission ID: ${e['admissionId']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              if (e['courseName'] != null) Text('🎓 ${e['courseName']}', style: const TextStyle(fontSize: 13)),
+            ]),
+          ),
         if (form.isNotEmpty) ...[
           const SizedBox(height: 10),
           Table(
