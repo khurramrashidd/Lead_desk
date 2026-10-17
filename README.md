@@ -2,7 +2,8 @@
 
 **An AI admissions counsellor for coaching institutes. It answers students on the website, Telegram and WhatsApp, gives them course advice, enrols them and collects the fee, all on its own, around the clock.**
 
-🔗 **Live demo:** https://lead-desk-39885.web.app    
+🔗 **Live demo:** https://lead-desk-39885.web.app   
+📱 **Android app:** Check in Release
 👥 **Team:** BuntyBubli · Khurram Rashid · Kinza Zahra
 
 ---
