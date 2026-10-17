@@ -331,6 +331,8 @@ class _Insights extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
         children: [
           if (dupOf != null) _DuplicateCard(leadId: leadId, otherId: dupOf, reason: '${d['possibleDuplicateReason'] ?? ''}'),
+          if ((d['relatedLeads'] as Map?)?.isNotEmpty == true)
+            _LinkedCard(leadId: leadId, me: me, related: (d['relatedLeads'] as Map).cast<String, dynamic>()),
           if (d['needsHuman'] == true)
             InsightCard(
               title: 'Needs a human',
@@ -714,6 +716,53 @@ class _DuplicateCard extends StatelessWidget {
           ]);
         },
       ),
+    );
+  }
+}
+
+/// Same family / shared phone, different students: separate admissions, linked both ways.
+class _LinkedCard extends StatelessWidget {
+  const _LinkedCard({required this.leadId, required this.me, required this.related});
+  final String leadId;
+  final String me;
+  final Map<String, dynamic> related;
+
+  @override
+  Widget build(BuildContext context) {
+    return InsightCard(
+      title: 'Linked enquiries',
+      icon: Icons.family_restroom_rounded,
+      accent: AppTheme.info,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Same phone or email, but a different student, so they stay separate admissions.',
+            style: context.texts.bodySmall?.copyWith(fontSize: 12)),
+        const SizedBox(height: 8),
+        for (final e in related.entries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${(e.value as Map?)?['name'] ?? e.key}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  Text('${(e.value as Map?)?['reason'] ?? ''}', style: context.texts.bodySmall?.copyWith(fontSize: 11.5)),
+                ]),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (ctx) => Scaffold(
+                    body: SafeArea(child: LeadDetail(leadId: e.key, me: me, onClose: () => Navigator.of(ctx).pop())),
+                  ),
+                )),
+                child: const Text('Open'),
+              ),
+              IconButton(
+                tooltip: 'Actually the same student: merge',
+                icon: const Icon(Icons.call_merge_rounded, size: 18),
+                onPressed: () => _run(context, () => Repo.merge(leadId, e.key), 'Merged into one timeline'),
+              ),
+            ]),
+          ),
+      ]),
     );
   }
 }

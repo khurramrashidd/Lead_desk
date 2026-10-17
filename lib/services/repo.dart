@@ -192,6 +192,21 @@ class Repo {
   static Future<Map<String, dynamic>> seed(String what) => Api.run('seed', {'what': what});
   static Future<Map<String, dynamic>> clearSeed() => Api.run('clearSeed');
 
+  /// Load test: N anonymous website visitors write at the same moment.
+  static Future<Map<String, dynamic>> burst(int count) => Api.run('burst', {'count': count});
+  static Future<Map<String, dynamic>> resetStats() => Api.run('resetStats');
+
+  /// Scale counters, spread over 10 shards (one Firestore document takes ~1 write/second).
+  static Stream<Map<String, num>> watchStats() => db.collection('stats').snapshots().map((s) {
+        final total = <String, num>{};
+        for (final d in s.docs) {
+          d.data().forEach((k, v) {
+            if (v is num) total[k] = (total[k] ?? 0) + v;
+          });
+        }
+        return total;
+      });
+
   /// Demo simulator: an enquiry exactly as if it arrived on WhatsApp / Instagram / a call…
   static Future<Map<String, dynamic>> simulate({
     required String channel,
@@ -200,6 +215,7 @@ class Repo {
     String? message,
     String? relation,
     String? studentName,
+    String? studentPhone,
   }) =>
       Api.run('simulate', {
         'channel': channel,
@@ -208,6 +224,7 @@ class Repo {
         'message': ?message,
         'relation': ?relation,
         'studentName': ?studentName,
+        'studentPhone': ?studentPhone,
       });
 
   /// "Talk to a human": name / phone / email / brief → lead + a real call or video-meeting slot.

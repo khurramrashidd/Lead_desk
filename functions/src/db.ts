@@ -150,6 +150,10 @@ export interface Lead {
   simulated?: boolean;
   handoffReason?: string;
   hotAlerted?: boolean;
+  studentKey?: string;
+  relatedLeads?: Record<string, { name: string; reason: string; at?: unknown }>;
+  createdBy?: string;
+  ai?: AiLock;
   status?: string;
   mergedInto?: string;
   needsHuman?: boolean;
@@ -161,6 +165,16 @@ export interface Lead {
   lastInboundAt?: Timestamp;
   lastMessageAt?: Timestamp;
   createdAt?: Timestamp;
+}
+
+/** Per-lead worker lock: one AI reply at a time, extra messages are answered together. */
+export interface AiLock {
+  busy?: boolean;
+  since?: Timestamp;
+  pending?: boolean;
+  lastAnsweredId?: string;
+  retryAt?: Timestamp;
+  retries?: number;
 }
 
 export interface Message {

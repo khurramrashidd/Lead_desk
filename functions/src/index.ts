@@ -13,19 +13,27 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Lead, Message } from "./db";
 
 // Mumbai — same region as the Firestore database.
-setGlobalOptions({ region: "asia-south1", maxInstances: 10 });
+setGlobalOptions({ region: "asia-south1", maxInstances: Number(process.env.MAX_INSTANCES || 100) });
 
-/** Every new message: prospect → Asha replies; counsellor → forwarded to their channel. */
+// ------------------------------------------------------------------ scaling
+// Every function is a Cloud Run service: it adds instances as traffic grows (up to
+// MAX_INSTANCES) and each instance serves many requests at once (concurrency), because the work
+// is mostly waiting on the AI and the database. Raise MAX_INSTANCES in functions/.env for real
+// traffic; the AI provider quota, not the servers, is the true ceiling, which is why answers
+// are cached, bursts are coalesced and failures retry with back-off.
+const MAX_INSTANCES = Number(process.env.MAX_INSTANCES || 100);
+
+/** Every new message: prospect → Asha replies; counsellor → delivered on the lead's channel. */
 export const onMessageCreated = onDocumentCreated(
-  { document: "leads/{leadId}/messages/{msgId}", timeoutSeconds: 120, memory: "512MiB" },
+  { document: "leads/{leadId}/messages/{msgId}", timeoutSeconds: 300, memory: "512MiB", cpu: 1, concurrency: 40, maxInstances: MAX_INSTANCES },
   async (event) => {
     const msg = event.data?.data() as Message | undefined;
     if (!msg || msg.mergedFrom || msg.seed) return; // copied during a merge, or sample data
     const { leadId, msgId } = event.params;
     const { db } = await import("./db");
-    const { deliverOn } = await import("./channels");
 
     if (msg.role === "counsellor") {
+      const { deliverOn } = await import("./channels");
       const lead = (await db.doc(`leads/${leadId}`).get()).data() as Lead | undefined;
       if (lead && msg.text && ["whatsapp", "telegram", "instagram"].includes(msg.channel)) {
         const r = await deliverOn(msg.channel, lead, msg.text);
@@ -43,20 +51,15 @@ export const onMessageCreated = onDocumentCreated(
       const copy = db.doc(`leads/${target}/messages/${msgId}`);
       if (!(await copy.get()).exists) await copy.set({ ...msg, mergedFrom: leadId });
     }
-
-    const { counsel } = await import("./brain");
-    const result = await counsel(target, msgId);
-    if (result && ["whatsapp", "telegram", "instagram"].includes(result.channel)) {
-      const lead = (await db.doc(`leads/${target}`).get()).data() as Lead | undefined;
-      if (lead) await deliverOn(result.channel, lead, result.reply);
-    }
+    const { respondAndDeliver } = await import("./brain");
+    await respondAndDeliver(target);
   },
 );
 
-/** New lead from a form, walk-in or web chat: check if we already know this person. */
+/** New lead created by the app (web chat, website form, walk-in): who is it, who handles it? */
 export const onLeadCreated = onDocumentCreated("leads/{leadId}", async (event) => {
   const lead = event.data?.data() as Lead | undefined;
-  if (!lead || lead.seed) return;
+  if (!lead || lead.seed || lead.createdBy === "server") return; // server-made leads resolve themselves
   const { resolveIdentity } = await import("./merge");
   const { assignByLanguage } = await import("./assign");
   if (lead.phone || lead.email) await resolveIdentity(event.params.leadId);
@@ -66,19 +69,18 @@ export const onLeadCreated = onDocumentCreated("leads/{leadId}", async (event) =
   }
 });
 
-/** Name, phone or email added later (e.g. typed into the web chat). */
-export const onLeadIdentityChanged = onDocumentWritten("leads/{leadId}", async (event) => {
-  const before = event.data?.before.data() as Lead | undefined;
-  const after = event.data?.after.data() as Lead | undefined;
-  if (!before || !after || after.mergedInto || after.seed) return;
-  const { normalizePhone } = await import("./identity");
-  const changed =
-    (normalizePhone(before.phone) ?? "") !== (normalizePhone(after.phone) ?? "") ||
-    (before.email ?? "") !== (after.email ?? "") ||
-    (before.name ?? "") !== (after.name ?? "");
-  if (!changed || (!after.phone && !after.email)) return;
-  const { resolveIdentity } = await import("./merge");
-  await resolveIdentity(event.params.leadId);
+/** AI providers busy or rate-limited: retry those conversations with back-off (2, 4, 8… min). */
+export const aiRetry = onSchedule({ schedule: "every 2 minutes", timeZone: "Asia/Kolkata", timeoutSeconds: 300 }, async () => {
+  const { db, Timestamp, FieldValue } = await import("./db");
+  const { respondAndDeliver } = await import("./brain");
+  const due = await db.collection("leads").where("ai.retryAt", "<=", Timestamp.now()).limit(25).get();
+  await Promise.all(
+    due.docs.map(async (d) => {
+      await d.ref.set({ ai: { retryAt: FieldValue.delete() } }, { merge: true });
+      await respondAndDeliver(d.id).catch((e) => console.warn("retry failed", d.id, e));
+    }),
+  );
+  if (due.size) console.log(`aiRetry: ${due.size} conversations retried`);
 });
 
 /** Meta webhook: WhatsApp Cloud API + Instagram DMs. */
@@ -171,7 +173,7 @@ export const callWebhook = onRequest({ cors: true }, async (req, res) => {
 });
 
 /** App actions: admin checks, demo data, simulators, merge, assign, book, call-backs. */
-export const api = onRequest({ cors: true, timeoutSeconds: 300, memory: "512MiB" }, async (req, res) => {
+export const api = onRequest({ cors: true, timeoutSeconds: 300, memory: "512MiB", cpu: 1, concurrency: 80 }, async (req, res) => {
   const { handleApi } = await import("./api");
   await handleApi(req, res);
 });

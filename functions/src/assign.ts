@@ -38,13 +38,11 @@ export async function assignByLanguage(leadId: string, lead: Lead, language?: st
     await db.doc(`leads/${leadId}`).set({ assignedLang: lang }, { merge: true });
     return lead.assignedTo ?? null;
   }
-  const counterRef = db.doc("config/assign");
-  const pick = await db.runTransaction(async (tx) => {
-    const c = (await tx.get(counterRef)).data() ?? {};
-    const n = Number(c[lang] ?? 0);
-    tx.set(counterRef, { [lang]: n + 1 }, { merge: true });
-    return pool[n % pool.length];
-  });
+  // Stateless spread: hash of the lead id picks the counsellor, so there is no shared counter
+  // document to fight over when thousands of leads arrive at once.
+  let h = 0;
+  for (const ch of leadId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const pick = pool[h % pool.length];
   await db.doc(`leads/${leadId}`).set({ assignedUid: pick.uid, assignedTo: pick.name, assignedLang: lang, assignedAt: FieldValue.serverTimestamp() }, { merge: true });
   await logEvent("assigned", leadId, { to: pick.name, uid: pick.uid, language: lang, reason: speakers.length ? `speaks ${lang}` : "no counsellor for this language: round-robin" });
   return pick.name;

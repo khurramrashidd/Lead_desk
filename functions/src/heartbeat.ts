@@ -104,5 +104,16 @@ export async function runHeartbeat(now: Date): Promise<{ reminders: number; foll
     await logEvent("followup", d.id, { channel: na.channel, playbook: na.playbook, reason: na.reason, message: na.message, delivered });
     followups++;
   }
+  // ---- Housekeeping: drop cached answers older than a day ----
+  try {
+    const old = await db.collection("aiCache").where("at", "<", Timestamp.fromMillis(Date.now() - 24 * HOUR)).limit(300).get();
+    if (!old.empty) {
+      const batch = db.batch();
+      old.docs.forEach((x) => batch.delete(x.ref));
+      await batch.commit();
+    }
+  } catch (e) {
+    console.warn("cache cleanup failed", e);
+  }
   return { reminders, followups, calls };
 }

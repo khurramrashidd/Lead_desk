@@ -26,17 +26,16 @@ Open `functions\.env` and paste at least one `GEMINI_API_KEY` (free: https://ais
 Add `GROQ_API_KEY` / `OPENROUTER_API_KEY` too if you have them (free fallbacks).
 
 ### 2. Every time you get a new zip
+Extract it over the project folder, then:
+- **If the message says "backend changed"** (like this one): `deploy` once, then `flutter run`.
+- **Otherwise:** just `flutter run`. It fetches packages by itself; pick Chrome or your phone from the list.
+
 ```bat
-flutter clean
-flutter pub get
-cd functions && npm install && npm test && cd ..
 deploy
-flutter run -d chrome
+flutter run
 ```
-- `npm test` must show **14 passing** (identity merge, Guard, aptitude, scoring, follow-ups).
-- `deploy` (= deploy.bat) deploys the AI brain + Firestore rules. It may ask to enable APIs → **y**.
-  It also removes the old `whatsappWebhook` function (replaced by `metaWebhook`).
-- Phone: `flutter run` with the phone on USB.
+- `deploy` (= deploy.bat) installs packages, runs the backend tests (**must say `pass 22`**), and deploys the AI brain + Firestore rules. It may ask to enable an API: answer **y**.
+- Test on your phone (app and web): **docs/TESTING.md**.
 
 ### 3. After the first deploy (2 minutes)
 1. Open the app → footer **Counsellor desk** → sign in with Google (first account = admin).
@@ -47,9 +46,9 @@ flutter run -d chrome
 
 ### 4. Publish the web app (for QR codes / judges)
 ```bat
-flutter build web --release
 deploy hosting
 ```
+(builds the web app and publishes it)
 → https://lead-desk-39885.web.app
 
 ### 5. Android APK
@@ -61,7 +60,9 @@ Install `build\app\outputs\flutter-apk\app-arm64-v8a-release.apk`.
 ---
 
 ## How each "What to Build" requirement is met
-See **docs/PROBLEM_STATEMENT_COVERAGE.md** (line by line, honest status) and **docs/ARCHITECTURE.md**.
+See **docs/PROBLEM_STATEMENT_COVERAGE.md** (line by line, honest status), **docs/ARCHITECTURE.md**, and
+**docs/SCALE_AND_IDENTITY.md** (millions of enquiries, same question from many people, one admission
+asked about by many people, one person asking about many students).
 
 ## 3-minute demo
 Open `/demo` in the app — the judges' hub with every entry point and the route:

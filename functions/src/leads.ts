@@ -77,6 +77,7 @@ export async function findOrCreateLead(p: InboundPerson): Promise<string> {
     status: "new",
     score: 0,
     userMessages: 0,
+    createdBy: "server",
     createdAt: FieldValue.serverTimestamp(),
     lastMessageAt: FieldValue.serverTimestamp(),
   });

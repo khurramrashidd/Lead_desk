@@ -2,6 +2,24 @@
 
 Newest first. Earlier history is in the git log.
 
+## 17 Oct 2026 — scale, same-question cache, family-aware identity (backend changed: run `deploy`)
+
+- **Answer cache + single-flight**: identical first questions from different strangers are answered by the
+  AI once; a burst of 1,000 identical questions makes 1 AI call (unit-tested). The cache key covers question,
+  channel, lead state, knowledge-base version and open slots.
+- **One reply per person at a time**: rapid messages are answered together; duplicate triggers ignored.
+- **Never lost**: AI busy → instant acknowledgement + automatic retries with back-off (`aiRetry`, every 2 min).
+- **Scaling**: message worker runs 40 conversations per instance, up to `MAX_INSTANCES` (default 100);
+  no hot documents (sharded counters, throttled health, hash-based assignment); `onLeadIdentityChanged` removed
+  (one function call fewer per lead write).
+- **Identity**: one lead per student with every enquirer as a contact. A parent or friend who gives the
+  student's number is merged; the same parent asking about another child becomes a second, *linked* lead.
+  Siblings are no longer merged (given-name-aware `personSimilarity`). A name alone never merges.
+- **App**: simulator presets 1–6 (father, friend, second child, cache), Admin → Demo → Load test,
+  Reports → Scale & cost, linked-enquiries card, ⚡ cached / batched labels, call button works on Android.
+- `deploy` now installs, tests and deploys in one go; `deploy hosting` also builds the web app.
+- Docs: SCALE_AND_IDENTITY.md, TESTING.md. Tests: 22 passing.
+
 ## v7 — fixed build, server-side intelligence, real calendar, fresh UI
 
 **Why it would not run before:** 38 unresolved git merge-conflict blocks were committed in four

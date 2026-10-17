@@ -8,23 +8,31 @@
  *   the server  → the Guard (no invented fees/discounts/guarantees), aptitude scoring, the lead
  *                 score, next-best-action timing and channel, slot booking + Google Calendar.
  */
-import { db, FieldValue, Timestamp, demoNow, logEvent, type AptitudeState, type KnowledgeBase, type Lead, type Message, type Slot } from "./db";
+import { createHash } from "node:crypto";
+import { db, FieldValue, Timestamp, demoNow, logEvent, type AiLock, type AptitudeState, type KnowledgeBase, type Lead, type Message, type Slot } from "./db";
 import { generateJson, type Turn } from "./ai";
 import { checkReply } from "./guard";
-import { formatIst, googleCalendarUrl, t } from "./lang";
+import { formatIst, googleCalendarUrl, normaliseQuestion, t } from "./lang";
 import { resolveIdentity } from "./merge";
 import { advance, byId, formatQuestion, plan } from "./aptitude";
 import { computeScore } from "./scoring";
 import { decideNextAction } from "./nba";
 import { createCalendarEvent } from "./calendar";
 import { assignByLanguage, hotLeadAlert } from "./assign";
+import { deliverOn } from "./channels";
+import { normalizePhone } from "./identity";
+import { bumpStat } from "./stats";
+import { singleFlight } from "./cache";
 
 let kbCache: { kb: KnowledgeBase; at: number } | null = null;
+/** Hash of the knowledge base: any edit in Admin changes it and invalidates cached answers. */
+let kbVersion = "";
 export async function getKb(): Promise<KnowledgeBase> {
   if (kbCache && Date.now() - kbCache.at < 30_000) return kbCache.kb;
   const snap = await db.doc("kb/main").get();
   const kb = (snap.data() as KnowledgeBase | undefined) ?? { instituteName: "SechTummit Trainers", city: "Pune", courses: [] };
   delete (kb as unknown as Record<string, unknown>).updatedAt;
+  kbVersion = createHash("sha256").update(JSON.stringify(kb)).digest("hex").slice(0, 16);
   kbCache = { kb, at: Date.now() };
   return kb;
 }
@@ -52,7 +60,8 @@ const RESPONSE_SCHEMA = {
     email: { type: "string" },
     city: { type: "string" },
     relation: { type: "string", enum: ["self", "parent", "guardian", "sibling", "friend", "other", "unknown"], description: "Who is writing, relative to the student." },
-    student_name: { type: "string", description: "The student's name if someone else (e.g. a parent) is writing." },
+    student_name: { type: "string", description: "The student's name if someone else (e.g. a parent or friend) is writing." },
+    student_phone: { type: "string", description: "The student's own mobile number if the person writing shares it." },
     profile: {
       type: "object",
       properties: {
@@ -113,6 +122,7 @@ interface BrainOut {
   city?: string;
   relation?: string;
   student_name?: string;
+  student_phone?: string;
   profile?: Record<string, string>;
   objections: string[];
   intent_score: number;
@@ -167,9 +177,8 @@ function aptitudeBlock(lead: Lead): string {
   return lines.join("\n");
 }
 
-function systemPrompt(kb: KnowledgeBase, slots: Slot[], lead: Lead, channel: string, now: Date): string {
-  const slotList = slots.map((s) => ({ id: s.id, title: s.title, course: s.courseId ?? "", when: formatIst(s.startAt.toDate()), mode: s.mode, seatsLeft: s.capacity - s.booked }));
-  const state = {
+function leadState(lead: Lead): Record<string, unknown> {
+  return {
     name: lead.name,
     phoneKnown: !!lead.phone,
     city: lead.city,
@@ -181,6 +190,11 @@ function systemPrompt(kb: KnowledgeBase, slots: Slot[], lead: Lead, channel: str
     booking: lead.booking ? { title: lead.booking.title, when: formatIst(lead.booking.startAt.toDate()) } : null,
     channelsUsed: lead.sources,
   };
+}
+
+function systemPrompt(kb: KnowledgeBase, slots: Slot[], lead: Lead, channel: string, now: Date): string {
+  const slotList = slots.map((s) => ({ id: s.id, title: s.title, course: s.courseId ?? "", when: formatIst(s.startAt.toDate()), mode: s.mode, seatsLeft: s.capacity - s.booked }));
+  const state = leadState(lead);
   return `You are Asha, the admissions counsellor of ${kb.instituteName}, a tech training institute in ${kb.city}. You are chatting on ${channel}. Current time: ${formatIst(now)}.
 
 GOAL: a genuine counselling conversation (not a FAQ bot). Understand the person, help them choose honestly, and book a free demo class.
@@ -193,7 +207,7 @@ LANGUAGE & TONE
 COUNSELLING (ask, don't lecture)
 - Learn background, education, gaps, current work, coding experience, goal, and constraints (time, money, family, distance). Empathise with the real worry behind the question.
 - "I'm a commerce graduate with a two-year gap — can I really become a developer?" deserves an honest, specific, encouraging answer about what it takes (daily practice, the right first step, how long), never a fee list.
-- If a parent, sibling or friend is writing, set relation and student_name and counsel them about the student.
+- If a parent, sibling or friend is writing, set relation and student_name and counsel them about the student. Early on, politely ask for the student's name and the student's own mobile number (so the counsellor can keep one record for the admission) and put it in student_phone. If they are asking about more than one child, focus on one at a time and say so.
 
 FACTS — STRICT
 - Fees, EMIs, scholarships, batch dates, durations, syllabus and policies come ONLY from KNOWLEDGE_BASE. Quote numbers exactly as written there.
@@ -229,13 +243,20 @@ LEAD_STATE_SO_FAR:
 ${JSON.stringify(state)}`;
 }
 
-function toTurns(history: Message[]): Turn[] {
+/** History → model turns. Voice notes the model has not heard yet go in as audio (newest 3). */
+function toTurns(history: Message[], unanswered: Set<number>): Turn[] {
+  const audioIdx = new Set(
+    history
+      .map((m, i) => ({ m, i }))
+      .filter(({ m, i }) => m.role === "user" && m.audioB64 && !m.transcript && unanswered.has(i))
+      .map(({ i }) => i)
+      .slice(-3),
+  );
   const turns: Turn[] = [];
   history.forEach((m, i) => {
-    const isLast = i === history.length - 1;
     const role: Turn["role"] = m.role === "user" ? "user" : "model";
-    if (m.role === "user" && m.audioB64 && isLast) {
-      turns.push({ role, text: m.text && !m.text.startsWith("🎤") ? m.text : "(voice note)", audio: { b64: m.audioB64, mime: m.audioMime || "audio/webm" } });
+    if (audioIdx.has(i)) {
+      turns.push({ role, text: m.text && !m.text.startsWith("🎤") ? m.text : "(voice note)", audio: { b64: m.audioB64!, mime: m.audioMime || "audio/webm" } });
       return;
     }
     let text = m.transcript ? `(voice note) ${m.transcript}` : m.text || (m.audioB64 ? "(voice note)" : "");
@@ -251,65 +272,44 @@ export interface BrainResult {
   channel: string;
 }
 
-/** Runs the counsellor for one new prospect message. */
-export async function counsel(leadId: string, messageId: string): Promise<BrainResult | null> {
-  const leadRef = db.doc(`leads/${leadId}`);
-  const lead = ((await leadRef.get()).data() ?? {}) as Lead;
-  const msgSnap = await leadRef.collection("messages").doc(messageId).get();
-  const msg = msgSnap.data() as Message | undefined;
-  if (!msg || lead.mergedInto) return null;
+// ------------------------------------------------------------------ answer cache
+// The same first question from thousands of different people ("Full Stack Java ki fees kitni
+// hai?", "hi") is answered by the AI ONCE; everyone else gets that answer in milliseconds.
+// The key includes everything the model saw (question, channel, lead state, knowledge-base
+// version, open slots), so a cached answer is exactly what the model would have said.
+// If 1,000 identical questions arrive in the same second, one worker asks the AI and the rest
+// wait for its answer (single-flight), instead of 1,000 AI calls.
+const PROMPT_VERSION = "v8";
 
-  const counters: Record<string, unknown> = {
-    userMessages: FieldValue.increment(1),
-    unansweredFollowups: 0,
-    ...(msg.audioB64 ? { voiceNotes: FieldValue.increment(1) } : {}),
-  };
-  if (lead.aiPaused) {
-    await leadRef.set({ ...counters, needsHuman: true, handoffReason: "Counsellor has taken over: reply from the desk" }, { merge: true });
-    return null;
-  }
+function sha(s: string): string {
+  return createHash("sha256").update(s).digest("hex").slice(0, 40);
+}
 
-  const now = await demoNow();
-  const [kb, slots, histSnap] = await Promise.all([
-    getKb(),
-    openSlots(now),
-    leadRef.collection("messages").orderBy("createdAt", "desc").limit(24).get(),
-  ]);
-  const history: Message[] = histSnap.docs
-    .filter((d) => d.id !== messageId)
-    .map((d) => d.data() as Message)
-    .reverse();
-  history.push(msg);
-  const system = systemPrompt(kb, slots, lead, msg.channel, now);
-  const turns = toTurns(history);
-  const userTexts = history.filter((m) => m.role === "user").map((m) => m.text || m.transcript || "");
+interface Thought {
+  out: BrainOut;
+  provider: string;
+  blockedDraft: string | null;
+  violations: string[];
+}
 
-  let out: BrainOut;
-  let provider = "";
-  try {
-    const r = await generateJson<BrainOut>(system, turns, RESPONSE_SCHEMA);
-    out = r.data;
-    provider = `${r.kind}:${r.model}`;
-    if (r.transcript && !out.transcript) out.transcript = r.transcript;
-  } catch (e) {
-    console.error("AI failed", e);
-    const reply = t("busy", lead.language);
-    await leadRef.collection("messages").add({ role: "ai", channel: msg.channel, text: reply, createdAt: FieldValue.serverTimestamp(), meta: { fallback: true } });
-    await leadRef.set({ ...counters, needsHuman: true, handoffReason: "AI unavailable: every provider failed", lastMessageAt: FieldValue.serverTimestamp() }, { merge: true });
-    return { reply, channel: msg.channel };
-  }
+/** Ask the AI pool, then run the Guard (and one rewrite if it blocked something). */
+async function think(leadId: string, system: string, turns: Turn[], kb: KnowledgeBase, userTexts: string[]): Promise<Thought> {
+  const r = await generateJson<BrainOut>(system, turns, RESPONSE_SCHEMA);
+  let out = r.data;
+  const provider = `${r.kind}:${r.model}`;
+  if (r.transcript && !out.transcript) out.transcript = r.transcript;
   out.reply = (out.reply ?? "").trim() || t("busy", out.language);
   out.objections = (out.objections ?? []).filter((o) => OBJECTIONS.includes(o));
-  if (out.transcript) userTexts[userTexts.length - 1] = `${userTexts[userTexts.length - 1]} ${out.transcript}`;
+  const texts = out.transcript ? [...userTexts, out.transcript] : userTexts;
 
-  // ---- The Guard ----
-  let guard = checkReply(out.reply, kb, userTexts);
+  let guard = checkReply(out.reply, kb, texts);
   let blockedDraft: string | null = null;
   if (!guard.ok) {
     blockedDraft = out.reply;
     await logEvent("guard_block", leadId, { draft: out.reply, violations: guard.violations });
+    await bumpStat("guardBlocks");
     const retry: Turn[] = [
-      ...turns,
+      ...turns.map((x) => ({ ...x })),
       { role: "model", text: out.reply },
       {
         role: "user",
@@ -318,7 +318,7 @@ export async function counsel(leadId: string, messageId: string): Promise<BrainR
     ];
     try {
       const second = (await generateJson<BrainOut>(system, retry, RESPONSE_SCHEMA)).data;
-      const g2 = checkReply(second.reply ?? "", kb, userTexts);
+      const g2 = checkReply(second.reply ?? "", kb, texts);
       if (g2.ok && second.reply) out = { ...out, ...second, transcript: out.transcript };
       else out.reply = t("safeFallback", out.language);
       guard = g2;
@@ -327,13 +327,166 @@ export async function counsel(leadId: string, messageId: string): Promise<BrainR
     }
   }
   // The suggested message and the follow-up are sent later, so they pass the Guard too.
-  if (out.suggested_message && !checkReply(out.suggested_message, kb, userTexts).ok) out.suggested_message = "";
-  let followup = out.next_action?.message ?? "";
-  if (followup && !checkReply(followup, kb, userTexts).ok) followup = t("nudge", out.language);
+  if (out.suggested_message && !checkReply(out.suggested_message, kb, texts).ok) out.suggested_message = "";
+  if (out.next_action?.message && !checkReply(out.next_action.message, kb, texts).ok) out.next_action.message = t("nudge", out.language);
+  return { out, provider, blockedDraft, violations: guard.violations };
+}
 
-  // ---- Voice note transcript ----
-  if (out.transcript && msg.audioB64) {
-    await msgSnap.ref.set({ transcript: out.transcript, language: out.language }, { merge: true });
+// --------------------------------------------------------------- per-lead worker
+// One AI reply per lead at a time. If someone sends three messages in five seconds, the first
+// trigger answers and the other two only raise a "pending" flag; the worker then answers all
+// of them together in one reply. Duplicate deliveries of the same event are ignored.
+const LOCK_MS = 150_000;
+
+export async function respond(leadId: string): Promise<BrainResult[]> {
+  const ref = db.doc(`leads/${leadId}`);
+  const got = await db.runTransaction(async (tx) => {
+    const ai = ((await tx.get(ref)).get("ai") ?? {}) as AiLock;
+    const busy = ai.busy && ai.since && Date.now() - ai.since.toMillis() < LOCK_MS;
+    if (busy) {
+      tx.set(ref, { ai: { pending: true } }, { merge: true });
+      return false;
+    }
+    tx.set(ref, { ai: { busy: true, since: Timestamp.now(), pending: false } }, { merge: true });
+    return true;
+  });
+  if (!got) {
+    await bumpStat("coalesced");
+    return [];
+  }
+  const results: BrainResult[] = [];
+  try {
+    for (let round = 0; round < 4; round++) {
+      const r = await counsel(leadId);
+      if (r) results.push(r);
+      const again = await db.runTransaction(async (tx) => {
+        const ai = ((await tx.get(ref)).get("ai") ?? {}) as AiLock;
+        if (ai.pending && round < 3) {
+          tx.set(ref, { ai: { pending: false, since: Timestamp.now() } }, { merge: true });
+          return true;
+        }
+        tx.set(ref, { ai: { busy: false, pending: false } }, { merge: true });
+        return false;
+      });
+      if (!again) break;
+    }
+  } catch (e) {
+    await ref.set({ ai: { busy: false } }, { merge: true });
+    throw e;
+  }
+  return results;
+}
+
+/** respond() + send each reply out on the lead's own channel. */
+export async function respondAndDeliver(leadId: string): Promise<number> {
+  const results = await respond(leadId);
+  if (!results.length) return 0;
+  const lead = (await db.doc(`leads/${leadId}`).get()).data() as Lead | undefined;
+  if (!lead) return 0;
+  for (const r of results) {
+    if (["whatsapp", "telegram", "instagram"].includes(r.channel)) await deliverOn(r.channel, lead, r.reply);
+  }
+  return results.length;
+}
+
+/** Answers every prospect message that has not been answered yet, in one reply. */
+export async function counsel(leadId: string): Promise<BrainResult | null> {
+  const leadRef = db.doc(`leads/${leadId}`);
+  const lead = ((await leadRef.get()).data() ?? {}) as Lead;
+  if (lead.mergedInto) return null;
+
+  const now = await demoNow();
+  const [kb, slots, histSnap] = await Promise.all([
+    getKb(),
+    openSlots(now),
+    leadRef.collection("messages").orderBy("createdAt", "desc").limit(24).get(),
+  ]);
+  const docs = histSnap.docs.slice().reverse();
+  const history = docs.map((d) => d.data() as Message);
+
+  // What has not been answered yet: prospect messages after the last real reply.
+  let lastReply = -1;
+  history.forEach((m, i) => {
+    const meta = (m.meta ?? {}) as Record<string, unknown>;
+    if (m.role === "counsellor" || (m.role === "ai" && !meta.fallback && !meta.automatic)) lastReply = i;
+  });
+  const unansweredIdx = history.map((m, i) => (m.role === "user" && i > lastReply ? i : -1)).filter((i) => i >= 0);
+  if (!unansweredIdx.length) return null;
+  const latestIdx = unansweredIdx[unansweredIdx.length - 1];
+  const latestDoc = docs[latestIdx];
+  const msg = history[latestIdx];
+  if (lead.ai?.lastAnsweredId === latestDoc.id) return null; // duplicate trigger
+
+  const fresh = unansweredIdx.map((i) => history[i]);
+  const counters: Record<string, unknown> = {
+    userMessages: FieldValue.increment(fresh.length),
+    unansweredFollowups: 0,
+    ...(fresh.some((m) => m.audioB64) ? { voiceNotes: FieldValue.increment(fresh.filter((m) => m.audioB64).length) } : {}),
+  };
+  if (lead.aiPaused) {
+    await leadRef.set(
+      { ...counters, needsHuman: true, handoffReason: "Counsellor has taken over: reply from the desk", ai: { lastAnsweredId: latestDoc.id } },
+      { merge: true },
+    );
+    return null;
+  }
+
+  const system = systemPrompt(kb, slots, lead, msg.channel, now);
+  const turns = toTurns(history, new Set(unansweredIdx));
+  const userTexts = history.filter((m) => m.role === "user").map((m) => m.text || m.transcript || "");
+
+  // Cache only a stranger's very first text question (same input → same answer).
+  const priorUser = history.some((m, i) => m.role === "user" && i <= lastReply);
+  const text = (msg.text ?? "").trim();
+  const cacheable =
+    fresh.length === 1 && !priorUser && !msg.audioB64 && !!text && text.length <= 240 && !text.startsWith("[") && !history.some((m) => m.role === "counsellor");
+
+  let thought: Thought;
+  let cacheState: "hit" | "wait" | "miss" | "off" = "off";
+  try {
+    if (cacheable) {
+      const key = sha(
+        JSON.stringify([PROMPT_VERSION, msg.channel, kbVersion, slots.slice(0, 5).map((s) => s.id), leadState(lead), lead.aptitude?.status ?? "", normaliseQuestion(text)]),
+      );
+      const r = await singleFlight<Thought>(key, () => think(leadId, system, turns, kb, userTexts), (v) => !v.out.book_slot_id && !v.out.handoff);
+      thought = r.value;
+      cacheState = r.state;
+      if (r.state !== "miss") await bumpStat(r.state === "hit" ? "cacheHits" : "cacheWaits");
+    } else {
+      thought = await think(leadId, system, turns, kb, userTexts);
+    }
+  } catch (e) {
+    console.error("AI failed", e);
+    // Never lost: an instant acknowledgement once, then automatic retries with back-off.
+    const retries = (lead.ai?.retries ?? 0) + 1;
+    if (retries === 1) {
+      await leadRef.collection("messages").add({ role: "ai", channel: msg.channel, text: t("busy", lead.language), createdAt: FieldValue.serverTimestamp(), meta: { fallback: true } });
+    }
+    const waitMin = Math.min(30, 2 ** retries);
+    await leadRef.set(
+      {
+        needsHuman: retries >= 3,
+        handoffReason: retries >= 3 ? "AI busy for a while: please reply from the desk" : "",
+        lastMessageAt: FieldValue.serverTimestamp(),
+        ai: retries <= 6 ? { retries, retryAt: Timestamp.fromMillis(Date.now() + waitMin * 60_000) } : { retries, retryAt: FieldValue.delete() },
+      },
+      { merge: true },
+    );
+    await bumpStat("aiFailures");
+    return retries === 1 ? { reply: t("busy", lead.language), channel: msg.channel } : null;
+  }
+  let out: BrainOut = JSON.parse(JSON.stringify(thought.out)) as BrainOut;
+  const blockedDraft = thought.blockedDraft;
+  if (cacheState === "hit" || cacheState === "wait") {
+    // Paranoia: a cached answer still has to pass today's Guard.
+    if (!checkReply(out.reply, kb, userTexts).ok) out = { ...out, reply: t("safeFallback", out.language) };
+  }
+  const followup = out.next_action?.message ?? "";
+
+  // ---- Voice note transcript (on the newest unanswered voice note) ----
+  if (out.transcript) {
+    const lastVoice = [...unansweredIdx].reverse().find((i) => history[i].audioB64 && !history[i].transcript);
+    if (lastVoice !== undefined) await docs[lastVoice].ref.set({ transcript: out.transcript, language: out.language }, { merge: true });
   }
 
   // ---- Aptitude (scored here, not by the model) ----
@@ -367,13 +520,15 @@ export async function counsel(leadId: string, messageId: string): Promise<BrainR
     createdAt: FieldValue.serverTimestamp(),
     meta: {
       kbRefs: out.kb_refs ?? [],
-      guard: blockedDraft ? { blocked: true, draft: blockedDraft, violations: guard.violations } : { blocked: false },
-      model: provider,
-      ...(shownQuestion
-        ? { kind: "aptitude", qid: shownQuestion.id, options: shownQuestion.options.map((o) => `${o.key}) ${o.text}`) }
-        : {}),
+      guard: blockedDraft ? { blocked: true, draft: blockedDraft, violations: thought.violations } : { blocked: false },
+      model: thought.provider,
+      ...(cacheState !== "off" && cacheState !== "miss" ? { cache: cacheState } : {}),
+      ...(fresh.length > 1 ? { answeredTogether: fresh.length } : {}),
+      ...(shownQuestion ? { kind: "aptitude", qid: shownQuestion.id, options: shownQuestion.options.map((o) => `${o.key}) ${o.text}`) } : {}),
     },
   });
+  await bumpStat("replies");
+  if (fresh.length > 1) await bumpStat("batched", fresh.length - 1);
 
   // ---- Update the lead card (scores and next action computed on the server) ----
   const profile = { ...(lead.profile ?? {}) };
@@ -398,8 +553,8 @@ export async function counsel(leadId: string, messageId: string): Promise<BrainR
     status,
     language: out.language,
     phone: lead.phone || out.phone,
-    userMessages: (lead.userMessages ?? 0) + 1,
-    voiceNotes: (lead.voiceNotes ?? 0) + (msg.audioB64 ? 1 : 0),
+    userMessages: (lead.userMessages ?? 0) + fresh.length,
+    voiceNotes: (lead.voiceNotes ?? 0) + fresh.filter((m) => m.audioB64).length,
     lastInboundAt: Timestamp.fromDate(now),
     lastChannel: msg.channel,
     unansweredFollowups: 0,
@@ -436,17 +591,22 @@ export async function counsel(leadId: string, messageId: string): Promise<BrainR
     handoffReason: out.handoff_reason ?? "",
     lastMessageAt: FieldValue.serverTimestamp(),
     status,
-    guardBlocks: FieldValue.increment(blockedDraft ? 1 : 0),
+    guardBlocks: FieldValue.increment(blockedDraft && cacheState === "off" ? 1 : 0),
+    ai: { lastAnsweredId: latestDoc.id, retries: 0, retryAt: FieldValue.delete() },
   };
   if (recommendation) update.recommendation = recommendation;
   if (booking) update.booking = booking;
+
+  // ---- Who is this? (writer, student, extra phones) ----
   let identityChanged = false;
+  const newPhones: string[] = [];
   if (out.name && !lead.name) {
     update.name = out.name;
     identityChanged = true;
   }
   if (out.phone && !lead.phone) {
     update.phone = out.phone;
+    newPhones.push(out.phone);
     identityChanged = true;
   }
   if (out.email && !lead.email) {
@@ -455,17 +615,30 @@ export async function counsel(leadId: string, messageId: string): Promise<BrainR
   }
   if (out.city && !lead.city) update.city = out.city;
   if (out.relation && out.relation !== "unknown" && out.relation !== "self" && !(lead.contacts ?? []).some((c) => c.relation === out.relation)) {
-    update.contacts = [...(lead.contacts ?? []), { name: out.name ?? lead.name ?? "", phone: out.phone ?? lead.phone ?? "", relation: out.relation, channel: msg.channel }];
+    const contacts = [...(lead.contacts ?? [])];
+    if (contacts.length && contacts[0].relation === "self" && !lead.studentName) contacts[0] = { ...contacts[0], relation: out.relation };
+    else contacts.push({ name: out.name ?? lead.name ?? "", phone: out.phone ?? lead.phone ?? "", relation: out.relation, channel: msg.channel });
+    update.contacts = contacts;
+    identityChanged = true;
   }
-  if (out.student_name && !lead.studentName) update.studentName = out.student_name;
+  if (out.student_name && !lead.studentName) {
+    update.studentName = out.student_name;
+    identityChanged = true;
+  }
+  if (out.student_phone && !lead.studentPhone) {
+    update.studentPhone = out.student_phone;
+    newPhones.push(out.student_phone);
+    identityChanged = true;
+  }
+  if (newPhones.length) update.contactPhones = FieldValue.arrayUnion(...newPhones.map((p) => normalizePhone(p) ?? p));
   await leadRef.set(update, { merge: true });
 
   // ---- Assignment by language + hot-lead alert ----
   try {
     await assignByLanguage(leadId, { ...lead, ...merged }, out.language);
     if (sc.temperature === "hot" && !lead.hotAlerted) {
-      const fresh = (await leadRef.get()).data() as Lead;
-      await hotLeadAlert(leadId, fresh, sc.score);
+      const freshLead = (await leadRef.get()).data() as Lead;
+      await hotLeadAlert(leadId, freshLead, sc.score);
       await leadRef.set({ hotAlerted: true }, { merge: true });
     }
   } catch (e) {

@@ -144,6 +144,29 @@ export function nameSimilarity(a?: string, b?: string): number {
   return Math.max(full, unordered, firstOnly);
 }
 
+/**
+ * Person-level similarity: the GIVEN name decides, the surname can only confirm.
+ * nameSimilarity("Priya Patil", "Rahul Patil") is high because the strings look alike;
+ * personSimilarity is low, because they are two siblings, not one person.
+ * Handles any script, spelling variants, middle names and "Patil Rahul" word order.
+ */
+export function personSimilarity(a?: string, b?: string): number {
+  if (!a || !b) return 0;
+  const ta = phoneticKey(a).split(" ").filter(Boolean);
+  const tb = phoneticKey(b).split(" ").filter(Boolean);
+  if (!ta.length || !tb.length) return 0;
+  if (ta.length === 1 || tb.length === 1) {
+    const one = ta.length === 1 ? ta[0] : tb[0];
+    const other = ta.length === 1 ? tb : ta;
+    if (ta.length === 1 && tb.length === 1) return jaroWinkler(ta[0], tb[0]);
+    return jaroWinkler(one, other[0]) * 0.95; // only a first name on one side
+  }
+  const aF = ta[0], aL = ta[ta.length - 1], bF = tb[0], bL = tb[tb.length - 1];
+  const straight = Math.min(jaroWinkler(aF, bF), jaroWinkler(aL, bL));
+  const swapped = Math.min(jaroWinkler(aF, bL), jaroWinkler(aL, bF));
+  return Math.max(straight, swapped);
+}
+
 /** "+91 98765-43210", "098765 43210", "919876543210" -> "9876543210" */
 export function normalizePhone(raw?: string): string | undefined {
   if (!raw) return undefined;
@@ -167,11 +190,11 @@ export interface PersonLike {
 export function decideMatch(a: PersonLike, b: PersonLike): { decision: MatchDecision; similarity: number; reason: string } {
   const pa = normalizePhone(a.phone);
   const pb = normalizePhone(b.phone);
-  const sim = nameSimilarity(a.name, b.name);
+  const sim = personSimilarity(a.name, b.name);
   const phoneEq = !!pa && pa === pb;
   const emailEq = !!a.email && !!b.email && a.email.trim().toLowerCase() === b.email.trim().toLowerCase();
 
-  if (phoneEq && (sim >= 0.8 || !a.name || !b.name)) {
+  if (phoneEq && (sim >= 0.85 || !a.name || !b.name)) {
     return { decision: "merge", similarity: sim, reason: "same phone number, matching name" };
   }
   if (phoneEq) {
@@ -182,4 +205,74 @@ export function decideMatch(a: PersonLike, b: PersonLike): { decision: MatchDeci
     return { decision: "review", similarity: sim, reason: "very similar name in the same city" };
   }
   return { decision: "none", similarity: sim, reason: "" };
+}
+
+// ---------------------------------------------------------------------------------------
+// Admission-level matching: one STUDENT can be asked about by several people (themselves,
+// a parent, a friend) from several accounts, and one PERSON (a parent, an agent) can ask
+// about several students. We merge only on a hard key (phone / email) AND a compatible
+// student; a shared phone with clearly different students becomes a LINK, never a merge;
+// a name alone is only ever a suggestion for a counsellor.
+// ---------------------------------------------------------------------------------------
+
+export interface LeadIdentity {
+  name?: string; // who is writing
+  phone?: string;
+  email?: string;
+  relation?: string; // self | parent | friend | sibling | guardian | other
+  studentName?: string;
+  studentPhone?: string;
+  contactPhones?: string[];
+  city?: string;
+}
+
+export type LeadDecision = "merge" | "related" | "review" | "none";
+
+function studentNameOf(x: LeadIdentity): string | undefined {
+  if (x.studentName && x.studentName.trim()) return x.studentName;
+  const rel = (x.relation ?? "self").toLowerCase();
+  return rel === "self" || rel === "unknown" ? x.name : undefined;
+}
+
+function phonesOf(x: LeadIdentity): Set<string> {
+  return new Set(
+    [x.phone, x.studentPhone, ...(x.contactPhones ?? [])]
+      .map((p) => normalizePhone(p))
+      .filter((p): p is string => !!p && p.length === 10),
+  );
+}
+
+export function decideLeadMatch(a: LeadIdentity, b: LeadIdentity): { decision: LeadDecision; similarity: number; reason: string } {
+  const pa = phonesOf(a);
+  const pb = phonesOf(b);
+  const shared = [...pa].filter((p) => pb.has(p));
+  const emailEq = !!a.email && !!b.email && a.email.trim().toLowerCase() === b.email.trim().toLowerCase();
+  const sa = studentNameOf(a);
+  const sb = studentNameOf(b);
+  const studentSim = personSimilarity(sa, sb);
+  const writerSim = personSimilarity(a.name, b.name);
+
+  if (shared.length || emailEq) {
+    const key = shared.length ? "same phone" : "same email";
+    if (sa && sb) {
+      if (studentSim >= 0.85) return { decision: "merge", similarity: studentSim, reason: `${key}, same student` };
+      if (studentSim < 0.7) {
+        return { decision: "related", similarity: studentSim, reason: `${key}, different students (family member or shared phone)` };
+      }
+      return { decision: "review", similarity: studentSim, reason: `${key}, similar but not identical student names` };
+    }
+    // Student unknown on at least one side: decide on who is writing.
+    if (!a.name || !b.name || writerSim >= 0.85) {
+      return { decision: "merge", similarity: writerSim, reason: `${key}, same person writing` };
+    }
+    if (writerSim < 0.7) return { decision: "review", similarity: writerSim, reason: `${key}, different names (maybe a parent's phone)` };
+    return { decision: "review", similarity: writerSim, reason: `${key}, similar names` };
+  }
+
+  // No hard key: a matching student name is only a suggestion, never an automatic merge.
+  if (sa && sb && studentSim >= 0.93) {
+    const sameCity = !!a.city && !!b.city && a.city.trim().toLowerCase() === b.city.trim().toLowerCase();
+    return { decision: "review", similarity: studentSim, reason: `same student name${sameCity ? " in the same city" : ""}, no shared phone yet` };
+  }
+  return { decision: "none", similarity: Math.max(studentSim, writerSim), reason: "" };
 }

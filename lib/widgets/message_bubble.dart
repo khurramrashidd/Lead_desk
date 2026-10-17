@@ -73,7 +73,17 @@ class MessageBubble extends StatelessWidget {
     String label = '';
     if (!prospectView) {
       if (role == 'ai') {
-        label = automatic ? '✨ Asha · ${_kind(meta['kind'])}${meta['delivered'] == false ? ' · not delivered: ${meta['note'] ?? ''}' : ''}' : '✨ Asha (AI)';
+        if (automatic) {
+          label = '✨ Asha · ${_kind(meta['kind'])}${meta['delivered'] == false ? ' · not delivered: ${meta['note'] ?? ''}' : ''}';
+        } else {
+          final extras = [
+            if (meta['cache'] == 'hit') '⚡ instant: same question answered before',
+            if (meta['cache'] == 'wait') '⚡ shared one AI call with identical questions',
+            if (meta['answeredTogether'] != null) 'answered ${meta['answeredTogether']} messages together',
+            if (meta['fallback'] == true) 'AI busy: auto-retrying',
+          ];
+          label = extras.isEmpty ? '✨ Asha (AI)' : '✨ Asha · ${extras.join(' · ')}';
+        }
       }
       if (role == 'counsellor') label = '🧑 ${meta['by'] ?? 'Counsellor'}';
       if (role == 'user') label = _channelLabel(channel);

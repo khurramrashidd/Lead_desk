@@ -1,6 +1,7 @@
 /** Finds the same person across channels and merges them into one timeline. */
 import { db, FieldValue, logEvent, type Lead } from "./db";
-import { decideMatch, hasDevanagari, nameSimilarity, normalizePhone, transliterate } from "./identity";
+import { decideLeadMatch, hasDevanagari, normalizePhone, phoneticKey, transliterate, type LeadIdentity } from "./identity";
+import { bumpStat } from "./stats";
 
 function titleCase(s: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
@@ -48,6 +49,13 @@ export async function mergeLeads(keepId: string, dupId: string, reason: string, 
   if (!keep.telegramId && dup.telegramId) patch.telegramId = dup.telegramId;
   if (!keep.igId && dup.igId) patch.igId = dup.igId;
   if (!keep.studentName && dup.studentName) patch.studentName = dup.studentName;
+  if (!keep.studentPhone && dup.studentPhone) patch.studentPhone = dup.studentPhone;
+  if (dup.relatedLeads || keep.relatedLeads?.[dupId]) {
+    const rel = { ...(dup.relatedLeads ?? {}), ...(keep.relatedLeads ?? {}) };
+    delete rel[keepId];
+    delete rel[dupId];
+    patch.relatedLeads = rel;
+  }
   if (!keep.assignedUid && dup.assignedUid) {
     patch.assignedUid = dup.assignedUid;
     patch.assignedTo = dup.assignedTo ?? "";
@@ -72,7 +80,10 @@ export async function mergeLeads(keepId: string, dupId: string, reason: string, 
     patch.suggestedMessage = dup.suggestedMessage;
   }
   if (dup.lastChannel) patch.lastChannel = dup.lastChannel;
+  const relatedPatch = patch.relatedLeads as Record<string, unknown> | undefined;
+  delete patch.relatedLeads;
   batch.set(keepRef, patch, { merge: true });
+  if (relatedPatch) batch.update(keepRef, { relatedLeads: relatedPatch });
   batch.set(dupRef, { mergedInto: keepId, possibleDuplicateOf: FieldValue.delete() }, { merge: true });
   batch.set(keepRef, { possibleDuplicateOf: FieldValue.delete(), possibleDuplicateReason: FieldValue.delete() }, { merge: true });
   await batch.commit();
@@ -95,54 +106,79 @@ export async function resolveIdentity(leadId: string): Promise<void> {
   const lead = (await ref.get()).data() as Lead | undefined;
   if (!lead || lead.mergedInto) return;
 
+  // Normalise what we store, so every later lookup is a cheap equality query.
   const phone = normalizePhone(lead.phone);
+  const studentPhone = normalizePhone(lead.studentPhone);
+  const allPhones = Array.from(
+    new Set([phone, studentPhone, ...(lead.contactPhones ?? []).map((p) => normalizePhone(p))].filter((p): p is string => !!p && p.length === 10)),
+  );
+  const studentName = lead.studentName || ((lead.contacts?.[0]?.relation ?? "self") === "self" ? lead.name : undefined);
+  const studentKey = studentName ? phoneticKey(studentName) : "";
   const patch: Record<string, unknown> = {};
   if (phone && phone !== lead.phone) patch.phone = phone;
+  if (studentPhone && studentPhone !== lead.studentPhone) patch.studentPhone = studentPhone;
+  if (allPhones.length && allPhones.some((p) => !(lead.contactPhones ?? []).includes(p))) patch.contactPhones = allPhones;
   const latin = latinName(lead.name);
   if (latin && latin !== lead.nameLatin) patch.nameLatin = latin;
+  if (studentKey && studentKey !== lead.studentKey) patch.studentKey = studentKey;
+  if (lead.email && lead.email !== lead.email.trim().toLowerCase()) patch.email = lead.email.trim().toLowerCase();
   if (Object.keys(patch).length) await ref.set(patch, { merge: true });
 
+  // Candidates: anyone sharing ANY phone (writer, student or contact), the same email, or the
+  // same student name (phonetic key, any script). Three indexed queries, no table scans.
   const candidates = new Map<string, Lead>();
-  if (phone) {
-    const byPhone = await db.collection("leads").where("phone", "==", phone).limit(10).get();
-    byPhone.docs.forEach((d) => candidates.set(d.id, d.data() as Lead));
+  const add = (snap: FirebaseFirestore.QuerySnapshot) => snap.docs.forEach((d) => candidates.set(d.id, d.data() as Lead));
+  if (allPhones.length) {
+    add(await db.collection("leads").where("contactPhones", "array-contains-any", allPhones.slice(0, 30)).limit(20).get());
+    if (phone) add(await db.collection("leads").where("phone", "==", phone).limit(10).get()); // older leads without contactPhones
   }
-  if (phone) {
-    for (const field of ["studentPhone", "contactPhones"] as const) {
-      const q = field === "contactPhones"
-        ? db.collection("leads").where(field, "array-contains", phone)
-        : db.collection("leads").where(field, "==", phone);
-      const snap = await q.limit(10).get();
-      snap.docs.forEach((d) => candidates.set(d.id, d.data() as Lead));
-    }
-  }
-  if (lead.email) {
-    const byEmail = await db.collection("leads").where("email", "==", lead.email).limit(10).get();
-    byEmail.docs.forEach((d) => candidates.set(d.id, d.data() as Lead));
-  }
+  if (lead.email) add(await db.collection("leads").where("email", "==", lead.email.trim().toLowerCase()).limit(10).get());
+  if (studentKey && studentKey.length >= 5) add(await db.collection("leads").where("studentKey", "==", studentKey).limit(10).get());
   candidates.delete(leadId);
+
+  const me: LeadIdentity = {
+    name: lead.name,
+    phone: phone ?? lead.phone,
+    email: lead.email,
+    relation: lead.contacts?.[0]?.relation,
+    studentName: lead.studentName,
+    studentPhone: studentPhone ?? lead.studentPhone,
+    contactPhones: allPhones,
+    city: lead.city,
+  };
+  const notDup = new Set((lead as Lead & { notDuplicateOf?: string[] }).notDuplicateOf ?? []);
 
   for (const [otherId, other] of candidates) {
     if (other.mergedInto || !!other.seed !== !!lead.seed) continue;
-    let m = decideMatch({ ...lead, phone: phone ?? lead.phone }, other);
-    const otherPhones = new Set([other.studentPhone, ...(other.contactPhones ?? [])].filter(Boolean) as string[]);
-    if (m.decision === "none" && phone && otherPhones.has(phone)) {
-      // Same number as the student or a parent/friend already on that admission.
-      const names = [other.name, other.studentName, ...(other.contacts ?? []).map((c) => c.name)].filter(Boolean) as string[];
-      const best = names.reduce((mx, n) => Math.max(mx, nameSimilarity(lead.name, n)), 0);
-      m = !lead.name || best >= 0.8
-        ? { decision: "merge", similarity: best, reason: "same phone as a contact on this admission" }
-        : { decision: "review", similarity: best, reason: "same phone as a contact on another lead, different name" };
-    }
-    if (m.decision === "merge") {
+    const m = decideLeadMatch(me, {
+      name: other.name,
+      phone: other.phone,
+      email: other.email,
+      relation: other.contacts?.[0]?.relation,
+      studentName: other.studentName,
+      studentPhone: other.studentPhone,
+      contactPhones: other.contactPhones,
+      city: other.city,
+    });
+    if (m.decision === "merge" && !notDup.has(otherId)) {
       // keep the older lead so its history stays first
       const leadTime = lead.createdAt?.toMillis() ?? Date.now();
       const otherTime = other.createdAt?.toMillis() ?? Date.now();
       const [keep, dup] = otherTime <= leadTime ? [otherId, leadId] : [leadId, otherId];
       await mergeLeads(keep, dup, m.reason, m.similarity);
+      await bumpStat("merges");
       return;
     }
-    if (m.decision === "review") {
+    if (m.decision === "related") {
+      // Same family / shared phone, different students: two admissions, linked both ways.
+      const at = FieldValue.serverTimestamp();
+      await ref.set({ relatedLeads: { [otherId]: { name: other.studentName || other.name || "", reason: m.reason, at } } }, { merge: true });
+      await db.doc(`leads/${otherId}`).set({ relatedLeads: { [leadId]: { name: lead.studentName || lead.name || "", reason: m.reason, at } } }, { merge: true });
+      await logEvent("related", leadId, { otherId, reason: m.reason });
+      await bumpStat("linked");
+      continue;
+    }
+    if (m.decision === "review" && !notDup.has(otherId)) {
       await ref.set({ possibleDuplicateOf: otherId, possibleDuplicateReason: m.reason }, { merge: true });
       await logEvent("possible_duplicate", leadId, { otherId, reason: m.reason, similarity: m.similarity });
     }

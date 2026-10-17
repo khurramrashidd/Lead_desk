@@ -11,6 +11,7 @@
  */
 import { GoogleGenAI, ThinkingLevel, type Content, type Part } from "@google/genai";
 import { db, FieldValue } from "./db";
+import { bumpStat } from "./stats";
 
 export type ProviderKind = "gemini" | "groq" | "openrouter";
 
@@ -173,7 +174,14 @@ export function parseJsonLoose<T>(text: string): T {
   throw new Error(`model did not return JSON: ${t.slice(0, 120)}`);
 }
 
+// One Firestore document takes about one sustained write per second, so under load each
+// instance reports a provider's health at most once a minute (or when it flips ok <-> failing).
+const lastHealth = new Map<string, { ok: boolean; at: number }>();
+
 async function noteHealth(p: AiProvider, ok: boolean, detail: string, ms: number): Promise<void> {
+  const prev = lastHealth.get(p.id);
+  if (prev && prev.ok === ok && Date.now() - prev.at < 60_000) return;
+  lastHealth.set(p.id, { ok, at: Date.now() });
   try {
     await db.doc("config/aiHealth").set(
       {
@@ -338,12 +346,12 @@ export async function generateJson<T>(system: string, turns: Turn[], schema: Rec
     if (kind !== "gemini" && turns.some((t) => t.audio)) {
       // Text-only provider: hear the voice note with Whisper first (once).
       if (!transcribed) {
-        const last = turns[turns.length - 1];
-        const text = last.audio ? await transcribeWithGroq(last.audio, settings.providers) : "";
+        // Every unanswered voice note is transcribed once (Groq Whisper, free).
+        const texts = await Promise.all(turns.map((t) => (t.audio ? transcribeWithGroq(t.audio, settings.providers) : Promise.resolve(""))));
         transcribed = {
-          text,
-          turns: turns.map((t) =>
-            t.audio ? { role: t.role, text: text ? `(voice note) ${text}` : "(voice note — could not be transcribed, ask them to type)" } : t,
+          text: [...texts].reverse().find((x) => x) ?? "",
+          turns: turns.map((t, i) =>
+            t.audio ? { role: t.role, text: texts[i] ? `(voice note) ${texts[i]}` : "(voice note — could not be transcribed, ask them to type)" } : t,
           ),
         };
       }
@@ -357,6 +365,7 @@ export async function generateJson<T>(system: string, turns: Turn[], schema: Rec
         const data = parseJsonLoose<T>(raw);
         const ms = Date.now() - started;
         void noteHealth(p, true, "ok", ms);
+        void bumpStat("aiCalls");
         return { data, providerId: p.id, kind, model: p.model, ms, transcript };
       } catch (e) {
         const ms = Date.now() - started;

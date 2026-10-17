@@ -25,7 +25,9 @@
 | 12 | "Rahul Patil" (form) = "राहुल पाटल" (WhatsApp) with a differently formatted phone | ✅ | Phones normalised (`098765 43210`, `+91 98765-43210`, `919876543210` → `9876543210`), Devanagari transliterated, Indian-spelling phonetic key + Jaro-Winkler. Tested with the sponsor's exact spelling. `identity.ts` |
 | 13 | Merge into a single timeline | ✅ | Messages, sources, contacts, objections, profile, booking, assignment move to the older lead; the student's open chat follows. `merge.ts` |
 | 14 | Ambiguous cases | ✅ | Same phone + different name → "Possible duplicate" card with **Merge / Different people** buttons, never a silent guess |
-| 15 | Beyond: parent / friend enquiring for the student | ✅ | Leads hold contacts with relations; matching also runs on contact and student phones |
+| 15 | Beyond: parent / friend enquiring for the student | ✅ | One lead per student, every enquirer a contact. A parent or friend who gives the student's number is merged; Asha asks for it |
+| 15b | Beyond: one person asking about several students (parent of two, agent, shared family phone) | ✅ | Separate leads, **linked** both ways, never merged; given-name-aware matching so siblings are not merged. docs/SCALE_AND_IDENTITY.md |
+| 15c | Beyond: burst load / the same question from thousands of people | ✅ | Answer cache + single-flight (1,000 identical → 1 AI call, tested), one reply per person, retries with back-off, autoscaling workers. Admin → Demo → Load test; Reports → Scale & cost |
 
 ## No lead forgotten — next-best-action engine
 

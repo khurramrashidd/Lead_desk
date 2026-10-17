@@ -106,3 +106,16 @@ export function t(key: keyof typeof T, language: string | undefined, vars: Recor
   for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(v);
   return s;
 }
+
+const DEV_DIGITS = "०१२३४५६७८९";
+
+/** "Full Stack Java ki FEES kitni hai??" and "full stack java ki fees kitni hai" → same key. */
+export function normaliseQuestion(t: string): string {
+  return [...(t ?? "").normalize("NFKC")]
+    .map((c) => (DEV_DIGITS.includes(c) ? String(DEV_DIGITS.indexOf(c)) : c))
+    .join("")
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}

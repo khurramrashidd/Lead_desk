@@ -156,6 +156,7 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
             message: body.message,
             relation: body.relation,
             studentName: body.studentName,
+            studentPhone: body.studentPhone,
             course: body.course,
             audioB64: body.audioB64,
             audioMime: body.audioMime,
@@ -164,6 +165,52 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
         );
         await logEvent("simulated", r.leadId, { channel: r.channel, by: w!.name });
         res.json({ ok: true, ...r });
+        return;
+      }
+      case "burst": {
+        // Load test: N anonymous website visitors write at the same moment. Most of them ask
+        // the same few questions, which is what real traffic looks like.
+        if (!isAdmin(w)) return deny();
+        const n = Math.max(3, Math.min(200, Number(body.count ?? 30)));
+        const questions: string[] = Array.isArray(body.questions) && body.questions.length
+          ? body.questions.map(String)
+          : [
+              "Full Stack Java ki fees kitni hai?",
+              "I'm a commerce graduate with a two-year gap — can I really become a developer?",
+              "मला डेटा सायन्स शिकायचं आहे, कोर्स किती महिन्यांचा आहे?",
+            ];
+        const started = Date.now();
+        await Promise.all(
+          Array.from({ length: n }, async (_, i) => {
+            const ref = db.collection("leads").doc();
+            await ref.set({
+              sources: ["web"],
+              firstSource: "web",
+              lastChannel: "web",
+              status: "new",
+              score: 0,
+              userMessages: 0,
+              seed: true,
+              burst: true,
+              createdBy: "server",
+              createdAt: FieldValue.serverTimestamp(),
+              lastMessageAt: FieldValue.serverTimestamp(),
+              lastInboundAt: FieldValue.serverTimestamp(),
+            });
+            await ref.collection("messages").add({ role: "user", channel: "web", text: questions[i % questions.length], createdAt: FieldValue.serverTimestamp(), meta: { burst: true } });
+          }),
+        );
+        await logEvent("burst", null, { count: n, distinct: questions.length, by: w!.name });
+        res.json({ ok: true, created: n, distinct: questions.length, ms: Date.now() - started });
+        return;
+      }
+      case "resetStats": {
+        if (!isAdmin(w)) return deny();
+        const shards = await db.collection("stats").get();
+        const batch = db.batch();
+        shards.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+        res.json({ ok: true });
         return;
       }
       // ----------------------------------------------------------- desk

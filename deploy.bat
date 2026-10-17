@@ -1,11 +1,8 @@
 @echo off
 REM ------------------------------------------------------------------
-REM  Deploy Firestore rules + Cloud Functions (the AI brain).
-REM  On slow laptops Firebase gives the functions only 10 seconds to load
-REM  during deploy ("User code failed to load ... Timeout after 10000").
-REM  This raises it to 120 seconds.
-REM  Usage:  deploy            (rules + functions)
-REM          deploy hosting    (web app, after: flutter build web --release)
+REM  deploy            AI brain (Cloud Functions) + Firestore rules
+REM  deploy hosting    build the web app and publish it (web.app link)
+REM  Raises Firebase's 10-second load limit to 120 s (slow laptops).
 REM ------------------------------------------------------------------
 set FUNCTIONS_DISCOVERY_TIMEOUT=120
 if not exist functions\.env (
@@ -13,7 +10,10 @@ if not exist functions\.env (
   exit /b 1
 )
 if /I "%~1"=="hosting" (
+  call flutter build web --release || exit /b 1
   call firebase deploy --only hosting
-) else (
-  call firebase deploy --only functions,firestore --force
+  exit /b
 )
+call npm --prefix functions install --no-audit --no-fund || exit /b 1
+call npm --prefix functions test || exit /b 1
+call firebase deploy --only functions,firestore --force

@@ -54,7 +54,7 @@ export async function handleIntake(p: IntakePayload, opts: { simulated?: boolean
   });
   if (p.city) await db.doc(`leads/${leadId}`).set({ city: p.city }, { merge: true });
 
-  const isChat = channel === "whatsapp" || channel === "telegram" || channel === "instagram";
+  const isChat = channel === "whatsapp" || channel === "telegram" || channel === "instagram" || (channel === "web" && !!p.message);
   let text: string;
   if (isChat) {
     text = p.message?.trim() || (p.audioB64 ? "🎤 Voice note" : "Hi");

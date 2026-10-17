@@ -60,6 +60,8 @@ service cloud.firestore {
       allow write: if isAdmin() || (isCounsellor() && doc == 'demo');
     }
     match /events/{doc} { allow read: if isCounsellor(); allow write: if false; } // written by Cloud Functions only
+    match /stats/{doc}  { allow read: if isCounsellor(); allow write: if false; } // sharded counters, Cloud Functions only
+    // aiCache/* has no rule on purpose: only Cloud Functions read and write the answer cache.
     match /alerts/{doc} {
       allow read: if isCounsellor();
       allow update: if isCounsellor() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);

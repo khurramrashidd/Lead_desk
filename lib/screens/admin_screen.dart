@@ -161,6 +161,22 @@ class _DemoTabState extends State<_DemoTab> {
         ),
       ),
       _Block(
+        icon: Icons.speed_rounded,
+        color: AppTheme.hot,
+        title: 'Load test: many people at the same moment',
+        help: 'Creates N anonymous website visitors who all write at once, asking 3 common questions (like real traffic). '
+            'Watch the desk fill up, then open Reports → Scale & cost: identical questions are answered with one AI call '
+            '(single-flight cache), so 30 people cost about 3 AI calls. Load-test leads are removed by "Clear sample leads".',
+        child: Wrap(spacing: 10, runSpacing: 10, children: [
+          for (final n in const [10, 30, 100])
+            FilledButton.tonal(
+              onPressed: _busy ? null : () => _run('$n enquiries sent at once', () => Repo.burst(n)),
+              child: Text('$n at once'),
+            ),
+          TextButton(onPressed: _busy ? null : () => _run('Counters reset', Repo.resetStats), child: const Text('Reset counters')),
+        ]),
+      ),
+      _Block(
         icon: Icons.fast_forward_rounded,
         color: AppTheme.warm,
         title: 'Time machine (demo only)',
