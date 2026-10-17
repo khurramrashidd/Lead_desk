@@ -30,7 +30,7 @@ export interface IntakePayload {
   audioMime?: string;
 }
 
-export async function handleIntake(p: IntakePayload, opts: { simulated?: boolean } = {}): Promise<{ leadId: string; channel: Channel }> {
+export async function handleIntake(p: IntakePayload, opts: { simulated?: boolean } = {}): Promise<{ leadId: string; channel: Channel; msgId: string }> {
   const channel = asChannel(p.source);
   const phone = normalizePhone(p.phone);
   const sim = opts.simulated;
@@ -70,11 +70,11 @@ export async function handleIntake(p: IntakePayload, opts: { simulated?: boolean
     const label = channel === "call" ? (p.audioB64 ? "Voicemail" : "Missed call") : channel === "googleform" ? "Google Form" : channel === "form" ? "Website form" : channel === "walkin" ? "Walk-in" : channel;
     text = `[${label}] ${lines.join(" · ") || "(no details)"}`;
   }
-  await addInbound(
+  const msgId = await addInbound(
     leadId,
     channel,
     { text, audioB64: p.audioB64, audioMime: p.audioMime, silent: p.silent, meta: { intake: !isChat, source: p.source ?? channel, ...(sim ? { simulated: true } : {}) } },
     identity,
   );
-  return { leadId, channel };
+  return { leadId, channel, msgId };
 }

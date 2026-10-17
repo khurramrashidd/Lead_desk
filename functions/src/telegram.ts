@@ -58,9 +58,9 @@ interface TgMessage {
 }
 
 /** Handles one Telegram update. */
-export async function handleTelegramUpdate(body: { message?: TgMessage }): Promise<void> {
+export async function handleTelegramUpdate(body: { message?: TgMessage }): Promise<{ leadId: string; msgId: string } | null> {
   const m = body?.message;
-  if (!m?.chat?.id) return;
+  if (!m?.chat?.id) return null;
   const chatId = String(m.chat.id);
   const name = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(" ").trim();
   const leadId = await findOrCreateLead({ channel: "telegram", telegramId: chatId, telegramUsername: m.from?.username, name });
@@ -86,5 +86,6 @@ export async function handleTelegramUpdate(body: { message?: TgMessage }): Promi
   } else {
     msg.text = m.text ?? m.caption ?? "(unsupported message)";
   }
-  await addInbound(leadId, "telegram", msg, { telegramId: chatId });
+  const msgId = await addInbound(leadId, "telegram", msg, { telegramId: chatId });
+  return { leadId, msgId };
 }

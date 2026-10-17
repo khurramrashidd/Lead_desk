@@ -29,20 +29,26 @@ WA_PHONE_ID=paste-the-phone-number-id
 WA_VERIFY_TOKEN=leaddesk-verify-123
 WA_GRAPH_VERSION=v23.0
 ```
-Deploy:
-```
-firebase deploy --only functions
-```
-In the deploy output, copy the URL for **whatsappWebhook** (it is also in Firebase Console → Functions → whatsappWebhook).
+(or paste the same values in **Admin → Channels → WhatsApp**, no redeploy needed). Deploy with `deploy` (see README).
+
+The webhook URL is **`https://asia-south1-<project-id>.cloudfunctions.net/metaWebhook`**
+(for this project: `https://asia-south1-lead-desk-39885.cloudfunctions.net/metaWebhook`). It is also shown,
+with a Copy button, in **Admin → Channels → WhatsApp**.
 
 ## D. Connect the webhook
 1. App Dashboard → **WhatsApp → Configuration**.
 2. Under **Webhook** click **Edit**:
-   - **Callback URL**: the whatsappWebhook URL from step C
+   - **Callback URL**: the metaWebhook URL from step C
    - **Verify token**: exactly the same word as `WA_VERIFY_TOKEN` (e.g. `leaddesk-verify-123`)
    - Click **Verify and save**. Meta calls our function; it answers the challenge.
 3. Under **Webhook fields** click **Manage** → turn on **messages** → **Done**.
    ⚠️ Without subscribing to **messages** you will receive nothing.
+4. **Admin → Channels → WhatsApp → Subscribe webhook.** This links your WhatsApp Business Account to the app
+   (`POST /<WABA-ID>/subscribed_apps`) and points it straight at metaWebhook. Without it Meta delivers nothing,
+   even when the dashboard says "Verified". The WABA ID is found automatically from the token; if not, copy
+   it from **WhatsApp → API Setup** (under the phone number) into the field.
+5. **Admin → Channels → Diagnose → Run diagnosis.** "WhatsApp: last call received from Meta" must turn ✅ after you
+   send a message. If it still says Meta never called, the problem is on the Meta side (steps D1–D4, the "To" list).
 
 ## E. Permanent token (so it doesn't expire during judging)
 1. Go to https://business.facebook.com → **Business settings** → **Users → System users** → **Add** → name `leaddesk-bot`, role **Admin**.
@@ -63,7 +69,8 @@ In the deploy output, copy the URL for **whatsappWebhook** (it is also in Fireba
 | Problem | Fix |
 |---|---|
 | "Verify and save" fails | Function not deployed, or the verify token differs from `WA_VERIFY_TOKEN` (check spaces). Use the exact URL from the deploy output. |
-| Webhook verified but nothing arrives | Subscribe to the **messages** field (step D3). |
+| Webhook verified but nothing arrives (not even on the desk) | Subscribe to the **messages** field (step D3) **and** press **Subscribe webhook** (step D4). With the test number, your phone must be in the **To** list. Run **Diagnose**. |
+| Message on the desk but Asha does not reply | Run **Admin → Channels → Diagnose**: it shows the AI error, a token error (190) or "not in allowed list" (131030). |
 | AI reply never reaches WhatsApp | Token expired (error 190) → new token (section E). Or the number is not in the "To" list. |
 | Reminder not delivered on WhatsApp | WhatsApp only allows free-form messages within **24 hours** of the student's last message. Outside it the desk flags "send an approved template or call". |
 | Voice note says "could not be downloaded" | Token lacks permissions → use the system-user token with the 3 permissions. |

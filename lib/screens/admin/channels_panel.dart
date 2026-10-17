@@ -18,7 +18,7 @@ class ChannelsPanel extends StatefulWidget {
 
 class _ChannelsPanelState extends State<ChannelsPanel> {
   final _c = <String, TextEditingController>{
-    for (final k in ['waToken', 'waPhoneId', 'waVerifyToken', 'telegramBotToken', 'igToken', 'igUserId', 'calendarId', 'intakeSecret'])
+    for (final k in ['waToken', 'waPhoneId', 'waVerifyToken', 'waBusinessId', 'telegramBotToken', 'igToken', 'igUserId', 'calendarId', 'intakeSecret'])
       k: TextEditingController(),
   };
   bool _loaded = false;
@@ -84,6 +84,7 @@ class _ChannelsPanelState extends State<ChannelsPanel> {
     if (!_loaded) return const LinearProgressIndicator();
     final secret = _c['intakeSecret']!.text.trim();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const _DiagnoseCard(),
       const _PublicLinksCard(),
       Card(
         margin: const EdgeInsets.only(bottom: 14),
@@ -106,24 +107,38 @@ class _ChannelsPanelState extends State<ChannelsPanel> {
         color: const Color(0xFF25D366),
         icon: Icons.chat_rounded,
         title: 'WhatsApp (Meta Cloud API)',
-        steps: 'developers.facebook.com → your app → WhatsApp → API Setup: copy the access token and the Phone number ID. '
-            'Then WhatsApp → Configuration → Webhook: paste the URL and verify token below, and subscribe to "messages". '
-            'Full guide: docs/SETUP_CHANNELS.md.',
+        steps: 'developers.facebook.com → your app → WhatsApp → API Setup: copy the access token, the Phone number ID and the '
+            'WhatsApp Business Account ID. Then WhatsApp → Configuration → Webhook: paste the URL and verify token below → Verify and save → '
+            'Webhook fields → "messages" → Subscribe. Finally press "Subscribe webhook" here (links your WhatsApp account to the app: '
+            'without it Meta never sends messages). Full guide: docs/WHATSAPP_SETUP.md.',
         fields: [
           _field('waToken', 'Access token', secret: true),
           _field('waPhoneId', 'Phone number ID'),
+          _field('waBusinessId', 'WhatsApp Business Account ID'),
           _field('waVerifyToken', 'Verify token (any word)'),
         ],
         copy: {'Webhook URL': '$_base/metaWebhook', 'Verify token': _c['waVerifyToken']!.text},
-        action: OutlinedButton(
-          onPressed: _busy
-              ? null
-              : () => _check('wa', () async {
-                    final r = await OpsService.testWhatsApp();
-                    return '${r.ok ? '✅' : '❌'} ${r.detail}';
-                  }),
-          child: const Text('Save & test'),
-        ),
+        action: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, spacing: 6, children: [
+          OutlinedButton(
+            onPressed: _busy
+                ? null
+                : () => _check('wa', () async {
+                      final r = await OpsService.testWhatsApp();
+                      return '${r.ok ? '✅' : '❌'} ${r.detail}';
+                    }),
+            child: const Text('Save & test'),
+          ),
+          FilledButton(
+            onPressed: _busy
+                ? null
+                : () => _check('wa', () async {
+                      final r = await OpsService.subscribeWhatsApp(_c['waBusinessId']!.text);
+                      if (r.wabaId.isNotEmpty && mounted) setState(() => _c['waBusinessId']!.text = r.wabaId);
+                      return '${r.ok ? '✅' : '❌'} ${r.detail}';
+                    }),
+            child: const Text('Subscribe webhook'),
+          ),
+        ]),
         status: _status['wa'],
         onCopy: _snack,
       ),
@@ -305,6 +320,83 @@ class _Channel extends StatelessWidget {
   }
 }
 
+
+/// One button that checks everything Asha needs to answer: the message trigger, the database
+/// region, the AI keys, the Telegram webhook, the WhatsApp subscription and the last webhook calls.
+class _DiagnoseCard extends StatefulWidget {
+  const _DiagnoseCard();
+
+  @override
+  State<_DiagnoseCard> createState() => _DiagnoseCardState();
+}
+
+class _DiagnoseCardState extends State<_DiagnoseCard> {
+  bool _running = false;
+  String? _error;
+  List<Map<String, dynamic>> _checks = const [];
+
+  Future<void> _run() async {
+    setState(() {
+      _running = true;
+      _error = null;
+    });
+    try {
+      final c = await OpsService.diagnose();
+      if (mounted) setState(() => _checks = c);
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.health_and_safety_rounded, color: AppTheme.info),
+            const SizedBox(width: 10),
+            Expanded(child: Text('Diagnose: why is Asha quiet?', style: context.texts.titleSmall?.copyWith(fontSize: 15))),
+            FilledButton.icon(
+              onPressed: _running ? null : _run,
+              icon: _running
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.play_arrow_rounded, size: 18),
+              label: Text(_running ? 'Checking…' : 'Run diagnosis'),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            'Checks the message trigger, database region, AI keys, the Telegram webhook, the WhatsApp subscription and the last '
+            'calls Meta and Telegram actually made to this project (about 20 s).',
+            style: context.texts.bodySmall?.copyWith(fontSize: 12.5, height: 1.5),
+          ),
+          if (_error != null) ...[const SizedBox(height: 8), Text('❌ $_error', style: const TextStyle(fontWeight: FontWeight.w600))],
+          for (final c in _checks)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(c['ok'] == true ? '✅' : c['ok'] == false ? '❌' : '❔', style: const TextStyle(fontSize: 15)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${c['name']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    SelectableText('${c['detail'] ?? ''}', style: const TextStyle(fontSize: 12.5, height: 1.4)),
+                    if ((c['fix'] ?? '').toString().isNotEmpty)
+                      SelectableText('Fix: ${c['fix']}', style: const TextStyle(fontSize: 12.5, height: 1.4, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+              ]),
+            ),
+        ]),
+      ),
+    );
+  }
+}
 
 /// The links behind "Talk on WhatsApp", "Talk on Telegram" and the website QR codes.
 class _PublicLinksCard extends StatefulWidget {

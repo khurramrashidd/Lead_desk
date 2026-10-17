@@ -70,6 +70,40 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
         res.json({ ok: true, env: envProviders().map((p) => ({ id: p.id, label: p.label, kind: p.kind, model: p.model })) });
         return;
       }
+      // -------------------------------------------------- answering
+      case "dispatch": {
+        // The app calls this right after writing a message, so Asha answers (and a
+        // counsellor's reply goes out) even when the Firestore trigger is not firing.
+        if (!w) return deny("sign-in required");
+        const leadId = String(body.leadId ?? "");
+        const msgId = String(body.msgId ?? "");
+        if (!leadId || !msgId) {
+          res.status(400).json({ ok: false, detail: "leadId and msgId required" });
+          return;
+        }
+        if (!isStaff(w)) {
+          const lead = (await db.doc(`leads/${leadId}`).get()).data() as Lead | undefined;
+          if (!lead?.viewerUids?.includes(w.uid)) return deny();
+        }
+        const { dispatchSafely } = await import("./dispatch");
+        res.json({ ...(await dispatchSafely(leadId, msgId, w.anonymous ? "app:web-chat" : "app:desk")) });
+        return;
+      }
+      case "diagnose": {
+        if (!isAdmin(w)) return deny();
+        const { runDiagnosis } = await import("./diagnose");
+        const checks = await runDiagnosis();
+        res.json({ ok: true, checks });
+        return;
+      }
+      case "subscribeWhatsApp": {
+        if (!isAdmin(w)) return deny();
+        const { subscribeWhatsApp } = await import("./diagnose");
+        const { clearChannelCache } = await import("./channels");
+        clearChannelCache();
+        res.json(await subscribeWhatsApp(body.wabaId ? String(body.wabaId) : undefined));
+        return;
+      }
       // ------------------------------------------------------- channels
       case "checkWhatsApp": {
         if (!isAdmin(w)) return deny();
@@ -164,6 +198,8 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
           { simulated: true },
         );
         await logEvent("simulated", r.leadId, { channel: r.channel, by: w!.name });
+        const { dispatchSafely } = await import("./dispatch");
+        await dispatchSafely(r.leadId, r.msgId, "simulator");
         res.json({ ok: true, ...r });
         return;
       }
@@ -180,6 +216,7 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
               "मला डेटा सायन्स शिकायचं आहे, कोर्स किती महिन्यांचा आहे?",
             ];
         const started = Date.now();
+        const made: { leadId: string; msgId: string }[] = [];
         await Promise.all(
           Array.from({ length: n }, async (_, i) => {
             const ref = db.collection("leads").doc();
@@ -197,9 +234,13 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
               lastMessageAt: FieldValue.serverTimestamp(),
               lastInboundAt: FieldValue.serverTimestamp(),
             });
-            await ref.collection("messages").add({ role: "user", channel: "web", text: questions[i % questions.length], createdAt: FieldValue.serverTimestamp(), meta: { burst: true } });
+            const m = await ref.collection("messages").add({ role: "user", channel: "web", text: questions[i % questions.length], createdAt: FieldValue.serverTimestamp(), meta: { burst: true } });
+            made.push({ leadId: ref.id, msgId: m.id });
           }),
         );
+        // Answer them here too (the trigger does the same; the per-lead lock keeps one reply each).
+        const { dispatchSafely } = await import("./dispatch");
+        await Promise.all(made.map((x) => dispatchSafely(x.leadId, x.msgId, "loadtest")));
         await logEvent("burst", null, { count: n, distinct: questions.length, by: w!.name });
         res.json({ ok: true, created: n, distinct: questions.length, ms: Date.now() - started });
         return;

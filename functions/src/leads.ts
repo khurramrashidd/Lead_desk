@@ -92,7 +92,7 @@ export async function addInbound(
   channel: Channel,
   msg: { id?: string; text?: string; audioB64?: string; audioMime?: string; meta?: Record<string, unknown>; silent?: boolean },
   identity: Partial<Pick<Lead, "waId" | "telegramId" | "igId">> = {},
-): Promise<void> {
+): Promise<string> {
   const leadRef = db.doc(`leads/${leadId}`);
   await leadRef.set(
     {
@@ -117,6 +117,9 @@ export async function addInbound(
   }
   const col = leadRef.collection("messages");
   // Idempotent when the provider gives us a message id (webhooks are retried).
-  if (msg.id) await col.doc(msg.id).create(data).catch(() => undefined);
-  else await col.add(data);
+  if (msg.id) {
+    await col.doc(msg.id).create(data).catch(() => undefined);
+    return msg.id;
+  }
+  return (await col.add(data)).id;
 }

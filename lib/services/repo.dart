@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -121,12 +123,21 @@ class Repo {
     if (audioB64 != null) msg['audioB64'] = audioB64;
     if (audioMime != null) msg['audioMime'] = audioMime;
     if (meta != null && meta.isNotEmpty) msg['meta'] = meta;
-    await messages(leadId).add(msg);
+    final ref = await messages(leadId).add(msg);
+    _dispatch(leadId, ref.id);
+  }
+
+  /// Asks the backend to answer [msgId] now (Asha's reply, or delivering a counsellor's
+  /// message on WhatsApp/Telegram). The Firestore trigger does the same; doing it from here
+  /// too means a reply never depends on that trigger alone. Safe to run twice.
+  /// Not awaited: the reply arrives through the live message stream.
+  static void _dispatch(String leadId, String msgId) {
+    unawaited(Api.call('dispatch', {'leadId': leadId, 'msgId': msgId}).then<void>((_) {}, onError: (Object _) {}));
   }
 
   /// A message typed by a human counsellor. Delivered on the lead's own channel by the backend.
   static Future<void> sendCounsellorMessage(String leadId, String text, {required String channel, required String me}) async {
-    await messages(leadId).add({
+    final ref = await messages(leadId).add({
       'role': 'counsellor',
       'channel': channel,
       'text': text,
@@ -137,6 +148,7 @@ class Repo {
       'lastMessageAt': FieldValue.serverTimestamp(),
       'needsHuman': false,
     }, SetOptions(merge: true));
+    _dispatch(leadId, ref.id);
   }
 
   /// The channel a counsellor's reply should go out on.

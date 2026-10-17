@@ -41,7 +41,12 @@ interface WaMessage {
   interactive?: { button_reply?: { id?: string; title: string }; list_reply?: { id?: string; title: string } };
 }
 
-async function handleWhatsApp(value: any): Promise<void> {
+export interface Stored {
+  leadId: string;
+  msgId: string;
+}
+
+async function handleWhatsApp(value: any, out: Stored[]): Promise<void> {
   const contacts: { wa_id: string; profile?: { name?: string } }[] = value?.contacts ?? [];
   for (const m of (value?.messages ?? []) as WaMessage[]) {
     const profileName = contacts.find((c) => c.wa_id === m.from)?.profile?.name;
@@ -67,7 +72,7 @@ async function handleWhatsApp(value: any): Promise<void> {
       if (pick?.id) msg.meta.choiceId = pick.id;
     }
     else msg.text = `(${m.type} message)`;
-    await addInbound(leadId, "whatsapp", msg, { waId: m.from });
+    out.push({ leadId, msgId: await addInbound(leadId, "whatsapp", msg, { waId: m.from }) });
   }
 }
 
@@ -77,7 +82,7 @@ interface IgMessaging {
   message?: { mid: string; text?: string; is_echo?: boolean; attachments?: { type: string; payload?: { url?: string } }[] };
 }
 
-async function handleInstagram(entry: any): Promise<void> {
+async function handleInstagram(entry: any, out: Stored[]): Promise<void> {
   const c = await channelConfig();
   for (const ev of (entry?.messaging ?? []) as IgMessaging[]) {
     const m = ev.message;
@@ -98,19 +103,39 @@ async function handleInstagram(entry: any): Promise<void> {
         msg.text = "🎤 Voice note";
       } else msg.text = "(voice note could not be downloaded)";
     } else msg.text = `(${m.attachments?.[0]?.type ?? "unsupported"} message)`;
-    await addInbound(leadId, "instagram", msg, { igId: from });
+    out.push({ leadId, msgId: await addInbound(leadId, "instagram", msg, { igId: from }) });
   }
 }
 
-/** Handles one webhook POST body from Meta (WhatsApp or Instagram). */
-export async function handleMetaWebhook(body: any): Promise<void> {
+/** What a webhook body contained, for Admin → Channels → Diagnose. */
+export function describeMetaBody(body: any): string {
+  const parts: string[] = [`object=${body?.object ?? "?"}`];
+  for (const entry of body?.entry ?? []) {
+    for (const change of entry?.changes ?? []) {
+      const v = change?.value ?? {};
+      const bits = [
+        v.messages?.length ? `${v.messages.length} message(s) from ${v.messages.map((m: WaMessage) => m.from).join(",")}` : "",
+        v.statuses?.length ? `${v.statuses.length} status(es): ${v.statuses.map((s: { status?: string }) => s.status).join(",")}` : "",
+        v.errors?.length ? `errors: ${JSON.stringify(v.errors).slice(0, 200)}` : "",
+      ].filter(Boolean);
+      parts.push(`${change?.field ?? "?"}${v.metadata?.phone_number_id ? ` to phone_id ${v.metadata.phone_number_id}` : ""}: ${bits.join("; ") || "no messages"}`);
+    }
+    if (entry?.messaging?.length) parts.push(`instagram messaging x${entry.messaging.length}`);
+  }
+  return parts.join(" | ").slice(0, 500);
+}
+
+/** Handles one webhook POST body from Meta (WhatsApp or Instagram). Returns the stored messages. */
+export async function handleMetaWebhook(body: any): Promise<Stored[]> {
+  const out: Stored[] = [];
   if (body?.object === "instagram") {
-    for (const entry of body?.entry ?? []) await handleInstagram(entry);
-    return;
+    for (const entry of body?.entry ?? []) await handleInstagram(entry, out);
+    return out;
   }
   for (const entry of body?.entry ?? []) {
     for (const change of entry?.changes ?? []) {
-      if (change?.field === "messages" && change?.value?.messages) await handleWhatsApp(change.value);
+      if (change?.field === "messages" && change?.value?.messages) await handleWhatsApp(change.value, out);
     }
   }
+  return out;
 }

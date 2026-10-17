@@ -54,6 +54,18 @@ class OpsService {
   static Future<void> saveChannels(Map<String, dynamic> values) =>
       channelsDoc.set({...values, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
 
+  /// Admin → Channels → Diagnose: why Asha is quiet or a channel is not arriving.
+  static Future<List<Map<String, dynamic>>> diagnose() async {
+    final d = await Api.run('diagnose');
+    return [for (final c in (d['checks'] as List? ?? const [])) (c as Map).cast<String, dynamic>()];
+  }
+
+  /// Subscribes the WhatsApp Business Account to the app and points it at metaWebhook.
+  static Future<({bool ok, String detail, String wabaId})> subscribeWhatsApp(String wabaId) async {
+    final d = await Api.call('subscribeWhatsApp', {if (wabaId.trim().isNotEmpty) 'wabaId': wabaId.trim()});
+    return (ok: d['ok'] == true, detail: '${d['detail'] ?? ''}', wabaId: '${d['wabaId'] ?? ''}');
+  }
+
   static Future<({bool ok, String detail})> testWhatsApp() async {
     final d = await Api.call('checkWhatsApp');
     final extra = [d['name'], d['number']].where((e) => e != null && '$e'.isNotEmpty).join(' · ');

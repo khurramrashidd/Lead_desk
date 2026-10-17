@@ -2,6 +2,31 @@
 
 Newest first. Earlier history is in the git log.
 
+## 17 Oct 2026 (4) — Asha answers on every channel even without the Firestore trigger (backend + app changed: run `deploy` and `deploy hosting`)
+
+**Symptoms fixed:** Asha never answered (web chat, Telegram) although every AI key tested fine; Telegram messages
+showed on the desk with no reply; WhatsApp messages did not even reach the desk.
+
+**Root cause:** every reply depended on one Firestore trigger (`onMessageCreated`). When it is not deployed or
+not firing (first-deploy Eventarc permission errors, or a database outside `asia-south1`), nothing answers, not
+even the intake questions that need no AI. WhatsApp: Meta was not calling `metaWebhook` at all (WhatsApp Business
+Account not subscribed to the app / "messages" field not subscribed); the old guide also named the wrong URL.
+
+- New `dispatch.ts`: one idempotent "act on this message" used by the trigger **and** by
+  - the Telegram / WhatsApp / Instagram webhooks (store → answer in the same request),
+  - the app (`api/dispatch` right after the web chat or a counsellor writes a message),
+  - the simulator, intake and call webhooks, the load test,
+  - a sweeper in `aiRetry` (every 2 min) for any prospect still waiting.
+  Running twice never double-answers (per-lead lock) and a counsellor's reply is claimed before sending.
+- **Admin → Channels → Diagnose**: database region vs trigger region, whether `onMessageCreated` is deployed and
+  active, a live AI call, Telegram's own webhook status, WhatsApp token + WABA subscription, and the last calls
+  Meta / Telegram actually made (`config/webhookStatus`), each with its fix.
+- **Admin → Channels → WhatsApp → Subscribe webhook** (`api/subscribeWhatsApp`): subscribes the WABA to the app
+  and points it at `metaWebhook`. New field: WhatsApp Business Account ID (found from the token when empty).
+- `TRIGGER_REGION` in `functions/.env` moves the Firestore triggers next to the database if Diagnose says so.
+- Offline end-to-end (in-memory Firestore, no trigger): Telegram intake, WhatsApp AI reply, late trigger and
+  webhook retries without duplicates, counsellor reply sent once, sweeper, `api/dispatch` auth: 18/18.
+
 ## 17 Oct 2026 (3) — final round: intake questions, QR codes, light site, voice preview (backend changed: run `deploy`)
 
 - **"Asha keeps typing" fixed at the root.** Google never shipped `gemini-3.5-flash` (live models today:
