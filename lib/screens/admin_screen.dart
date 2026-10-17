@@ -9,6 +9,7 @@ import '../app_theme.dart';
 import '../config.dart';
 import '../data/links.dart';
 import '../data/seed.dart';
+import '../services/api.dart';
 import '../services/repo.dart';
 import '../widgets/site_widgets.dart';
 import 'admin/ai_settings_panel.dart';
@@ -106,7 +107,32 @@ class _OverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const _BuildCheck(),
       const DiagnoseCard(),
+      _Block(
+        icon: Icons.view_sidebar_rounded,
+        color: AppTheme.indigo,
+        title: 'Desk layout',
+        help: 'How a lead opens on the desk (computer / tablet): a side panel on the right, or a large pop-up in the middle. '
+            'Both have Minimise and Close. Phones always open the lead full screen.',
+        child: StreamBuilder<Map<String, dynamic>>(
+          stream: Repo.watchDeskConfig(),
+          builder: (context, snap) {
+            final view = snap.data?['conversationView'] == 'popup' ? 'popup' : 'panel';
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'panel', icon: Icon(Icons.view_sidebar_rounded), label: Text('Side panel')),
+                  ButtonSegment(value: 'popup', icon: Icon(Icons.open_in_new_rounded), label: Text('Pop-up')),
+                ],
+                selected: {view},
+                onSelectionChanged: (v) => Repo.saveDeskLayout(v.first),
+              ),
+            );
+          },
+        ),
+      ),
       const _Block(
         icon: Icons.currency_rupee_rounded,
         color: AppTheme.success,
@@ -148,6 +174,34 @@ class _OverviewTab extends StatelessWidget {
         ]),
       ),
     ]);
+  }
+}
+
+/// App build vs backend build: a mismatch means one of the two was not deployed.
+class _BuildCheck extends StatelessWidget {
+  const _BuildCheck();
+
+  static const _expected = 'r10';
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: Api.call('version'),
+      builder: (context, snap) {
+        if (!snap.hasData) return const SizedBox.shrink();
+        final server = '${snap.data!['build'] ?? 'old'}';
+        final ok = server == _expected;
+        return Card(
+          margin: const EdgeInsets.only(bottom: 14),
+          color: ok ? AppTheme.success.withValues(alpha: 0.08) : AppTheme.hot.withValues(alpha: 0.08),
+          child: ListTile(
+            leading: Icon(ok ? Icons.verified_rounded : Icons.warning_amber_rounded, color: ok ? AppTheme.success : AppTheme.hot),
+            title: Text(ok ? 'App and server are up to date ($kBuildLabel)' : 'Server build "$server" is older than this app ($_expected)'),
+            subtitle: ok ? null : const Text('Run "deploy" (or "deploy all") on the laptop, then refresh.'),
+          ),
+        );
+      },
+    );
   }
 }
 

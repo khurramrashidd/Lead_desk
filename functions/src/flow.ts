@@ -700,6 +700,7 @@ export async function verifyEnrollment(leadId: string, approve: boolean, by: str
         batch: f.batch ?? "",
         startMonth: f.start ?? "",
         amount: e.amount ?? 0,
+        receiptMsgId: e.receiptMsgId ?? null,
         channel: lead.lastChannel ?? "web",
         allottedBy: by,
         allottedAt: FieldValue.serverTimestamp(),

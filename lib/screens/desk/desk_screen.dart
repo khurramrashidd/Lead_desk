@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -34,6 +37,41 @@ class _DeskScreenState extends State<DeskScreen> {
   String? _selected;
   DeskView _view = DeskView.leads;
 
+  /// Conversations put away with "Minimise": small tabs at the bottom.
+  final _minimized = <String>[];
+
+  /// Admin → Overview → Desk layout: 'panel' (side panel) or 'popup' (centred window).
+  String _layout = 'panel';
+  StreamSubscription<Map<String, dynamic>>? _cfgSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _cfgSub = Repo.watchDeskConfig().listen(
+      (c) {
+        if (mounted) setState(() => _layout = c['conversationView'] == 'popup' ? 'popup' : 'panel');
+      },
+      onError: (Object _) {},
+    );
+  }
+
+  @override
+  void dispose() {
+    _cfgSub?.cancel();
+    super.dispose();
+  }
+
+  void _close() => setState(() => _selected = null);
+
+  void _minimise() {
+    final id = _selected;
+    if (id == null) return;
+    setState(() {
+      if (!_minimized.contains(id)) _minimized.add(id);
+      _selected = null;
+    });
+  }
+
   String get _me => AuthService.displayName;
 
   void _open(String leadId) {
@@ -50,7 +88,7 @@ class _DeskScreenState extends State<DeskScreen> {
     }
     setState(() {
       _selected = leadId;
-      _view = DeskView.leads;
+      _minimized.remove(leadId);
     });
   }
 
@@ -92,41 +130,63 @@ class _DeskScreenState extends State<DeskScreen> {
   }
 
   // ------------------------------------------------------- tablet / desktop
+  // The list (or activity / reports) uses the whole width; a lead opens on top of it as a
+  // side panel or a centred pop-up (admin's choice), with Minimise and Close.
   Widget _wide(BuildContext context, ScreenSize size) {
     final desktop = size == ScreenSize.desktop;
-    final detail = _selected == null
-        ? const _EmptyDetail()
-        : LeadDetail(key: ValueKey(_selected), leadId: _selected!, me: _me);
+    final Widget base = switch (_view) {
+      DeskView.reports => const ReportsView(),
+      DeskView.activity => ActivityFeed(onOpenLead: _open),
+      DeskView.leads => Column(
+          children: [
+            if (desktop)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+                child: const LiveKpiStrip(compact: true),
+              ),
+            Expanded(child: LeadList(selectedId: _selected, onSelect: _open)),
+          ],
+        ),
+    };
 
-    Widget content;
-    switch (_view) {
-      case DeskView.reports:
-        content = const ReportsView();
-      case DeskView.activity:
-        content = Row(children: [
-          SizedBox(width: 360, child: ActivityFeed(onOpenLead: _open)),
-          const VerticalDivider(width: 1),
-          Expanded(child: detail),
-        ]);
-      case DeskView.leads:
-        content = Row(children: [
-          SizedBox(
-            width: desktop ? 372 : 330,
-            child: Column(
-              children: [
-                if (desktop)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-                    child: const LiveKpiStrip(compact: true),
-                  ),
-                Expanded(child: LeadList(selectedId: _selected, onSelect: _open)),
-              ],
+    final content = LayoutBuilder(builder: (context, c) {
+      final panelWidth = math.min(c.maxWidth, math.max(640.0, c.maxWidth * 0.62));
+      return Stack(children: [
+        Positioned.fill(child: base),
+        if (_selected != null && _layout == 'popup') ...[
+          Positioned.fill(
+            child: GestureDetector(onTap: _close, child: Container(color: Colors.black.withValues(alpha: 0.35))),
+          ),
+          Center(
+            child: SizedBox(
+              width: math.min(c.maxWidth - 32, 1240),
+              height: c.maxHeight - 32,
+              child: Material(
+                elevation: 16,
+                borderRadius: BorderRadius.circular(AppTheme.r20),
+                clipBehavior: Clip.antiAlias,
+                child: _conversation(),
+              ),
             ),
           ),
-          const VerticalDivider(width: 1),
-          Expanded(child: detail),
-        ]);
-    }
+        ],
+        if (_selected != null && _layout != 'popup')
+          Positioned(
+            top: 0,
+            bottom: 0,
+            right: 0,
+            width: panelWidth,
+            child: Material(elevation: 16, child: _conversation()),
+          ),
+        if (_minimized.isNotEmpty)
+          Positioned(
+            left: 12,
+            bottom: 12,
+            right: _selected != null && _layout != 'popup' ? panelWidth + 12 : 12,
+            child: _MinimizedBar(ids: _minimized, onOpen: _open, onRemove: (id) => setState(() => _minimized.remove(id))),
+          ),
+      ]);
+    });
 
     return Scaffold(
       body: Row(
@@ -150,6 +210,27 @@ class _DeskScreenState extends State<DeskScreen> {
         ],
       ),
     );
+  }
+
+  /// The open conversation with its Minimise / Close bar.
+  Widget _conversation() {
+    return Column(children: [
+      Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        color: context.scheme.surfaceContainerHigh,
+        child: Row(children: [
+          const SizedBox(width: 6),
+          Icon(Icons.forum_rounded, size: 17, color: context.scheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Text('Conversation', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: context.scheme.onSurfaceVariant)),
+          const Spacer(),
+          IconButton(tooltip: 'Minimise', icon: const Icon(Icons.minimize_rounded, size: 20), onPressed: _minimise),
+          IconButton(tooltip: 'Close', icon: const Icon(Icons.close_rounded, size: 20), onPressed: _close),
+        ]),
+      ),
+      Expanded(child: LeadDetail(key: ValueKey(_selected), leadId: _selected!, me: _me)),
+    ]);
   }
 
   // ---------------------------------------------------------------- top bar
@@ -453,9 +534,27 @@ class _AlertsButtonState extends State<_AlertsButton> {
             final a = fresh.first;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text('${a.data()['title'] ?? 'Hot lead'}'),
-                action: SnackBarAction(label: 'Open', onPressed: () => widget.onOpen('${a.data()['leadId']}')),
+              final messenger = ScaffoldMessenger.of(context);
+              messenger.showSnackBar(SnackBar(
+                duration: const Duration(seconds: 10),
+                content: Row(children: [
+                  Expanded(child: Text('${a.data()['title'] ?? 'Hot lead'}')),
+                  TextButton(
+                    onPressed: () {
+                      messenger.hideCurrentSnackBar();
+                      widget.onOpen('${a.data()['leadId']}');
+                    },
+                    child: const Text('Open'),
+                  ),
+                  IconButton(
+                    tooltip: 'Hide',
+                    icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
+                    onPressed: () {
+                      messenger.hideCurrentSnackBar();
+                      Repo.markAlertRead(a.id).catchError((Object _) {});
+                    },
+                  ),
+                ]),
               ));
             });
           }
@@ -514,31 +613,35 @@ class _LiveBadge extends StatelessWidget {
       );
 }
 
-class _EmptyDetail extends StatelessWidget {
-  const _EmptyDetail();
+/// Minimised conversations: one small tab each; tap to reopen, ✕ to drop.
+class _MinimizedBar extends StatelessWidget {
+  const _MinimizedBar({required this.ids, required this.onOpen, required this.onRemove});
+  final List<String> ids;
+  final ValueChanged<String> onOpen;
+  final ValueChanged<String> onRemove;
 
   @override
-  Widget build(BuildContext context) => Container(
-        color: context.scheme.surfaceContainerLow,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Opacity(opacity: 0.25, child: const BrandMark(size: 64)),
-                const SizedBox(height: 20),
-                Text('Pick a lead to open the conversation',
-                    textAlign: TextAlign.center, style: context.texts.titleMedium),
-                const SizedBox(height: 8),
-                Text(
-                  'Asha keeps every enquiry answered. You step in when it matters — one tap on "Take over".',
-                  textAlign: TextAlign.center,
-                  style: context.texts.bodyMedium?.copyWith(fontSize: 13.5),
-                ),
-              ],
-            ),
-          ),
+  Widget build(BuildContext context) {
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      for (final id in ids)
+        StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: Repo.watchLead(id),
+          builder: (context, snap) {
+            final d = snap.data?.data() ?? const <String, dynamic>{};
+            final name = '${d['name'] ?? ''}'.trim().isEmpty ? 'Conversation' : '${d['name']}';
+            return Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(999),
+              child: InputChip(
+                avatar: const Icon(Icons.forum_rounded, size: 16),
+                label: Text(name, overflow: TextOverflow.ellipsis),
+                onPressed: () => onOpen(id),
+                onDeleted: () => onRemove(id),
+                deleteButtonTooltipMessage: 'Close',
+              ),
+            );
+          },
         ),
-      );
+    ]);
+  }
 }

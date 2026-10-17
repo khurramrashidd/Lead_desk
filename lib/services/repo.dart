@@ -349,4 +349,8 @@ class Repo {
   }
 
   static Stream<DocumentSnapshot<Map<String, dynamic>>> watchDemoConfig() => db.doc('config/demo').snapshots();
+
+  /// Admin → Overview → Desk layout ('panel' or 'popup').
+  static Stream<Map<String, dynamic>> watchDeskConfig() => db.doc('config/desk').snapshots().map((s) => s.data() ?? const {});
+  static Future<void> saveDeskLayout(String view) => db.doc('config/desk').set({'conversationView': view}, SetOptions(merge: true));
 }

@@ -2,6 +2,16 @@
 
 Newest first. Earlier history is in the git log.
 
+## 17 Oct 2026 (10) — desk layout, alert Hide, receipts in Registered students (run `deploy all`)
+
+- Desk (computer / tablet): the list uses the full width; a lead opens as a **side panel** or a **pop-up**
+  (Admin → Overview → Desk layout) with **Minimise** (tabs at the bottom) and **Close**. The empty
+  "Pick a lead…" panel is gone.
+- Alert pop-ups on the desk have **Open** and **Hide (✕)**; Hide also marks the alert as read.
+- **Registered students → Receipt → View** shows the payment receipt photo.
+- Admin → Overview shows whether the server and the app are the same build; "unknown route" errors now say
+  "the server is older than this app: run deploy".
+
 ## 17 Oct 2026 (9) — Asha answers from the records, Ask AI, resend confirmation (run `deploy all`)
 
 - **"What is my admission ID / payment status / batch / demo time?"** is answered from the real records

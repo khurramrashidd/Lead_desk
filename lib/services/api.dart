@@ -36,6 +36,10 @@ class Api {
       data = {'ok': false, 'detail': 'HTTP ${res.statusCode}: ${res.body.length > 200 ? res.body.substring(0, 200) : res.body}'};
     }
     if (res.statusCode >= 400 && data['ok'] != false) data['ok'] = false;
+    // The app was published before the backend: say so plainly instead of "unknown route".
+    if ('${data['detail'] ?? ''}'.startsWith('unknown route')) {
+      data['detail'] = 'The server is older than this app. Run "deploy" (backend) on the laptop, then try again.';
+    }
     return data;
   }
 

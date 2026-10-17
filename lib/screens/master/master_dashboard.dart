@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -794,6 +796,42 @@ class _StudentsTab extends StatefulWidget {
 }
 
 class _StudentsTabState extends State<_StudentsTab> {
+  /// The payment receipt photo the student sent (kept on their conversation).
+  Future<void> _showReceipt(BuildContext context, Map<String, dynamic> s) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final leadId = '${s['leadId'] ?? ''}';
+      var msgId = s['receiptMsgId'] as String?;
+      if (msgId == null && leadId.isNotEmpty) {
+        final lead = (await Repo.watchLead(leadId).first).data();
+        msgId = (lead?['enrollment'] as Map?)?['receiptMsgId'] as String?;
+      }
+      final b64 = msgId == null ? null : (await Repo.message(leadId, msgId))?['imageB64'] as String?;
+      if (b64 == null) {
+        messenger.showSnackBar(const SnackBar(content: Text('No receipt photo on this record.')));
+        return;
+      }
+      final bytes = base64Decode(b64);
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (d) => Dialog(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ListTile(
+              title: Text('Receipt · ${s['admissionId'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text('${s['name'] ?? ''} · ₹${s['amount'] ?? ''} · ${s['courseName'] ?? ''}'),
+              trailing: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(d)),
+            ),
+            Flexible(child: InteractiveViewer(child: Image.memory(bytes, fit: BoxFit.contain))),
+            const SizedBox(height: 12),
+          ]),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
+    }
+  }
+
   final _stream = FirebaseFirestore.instance.collection('students').orderBy('allottedAt', descending: true).limit(500).snapshots();
   final _search = TextEditingController();
   String _course = '';
@@ -885,6 +923,7 @@ class _StudentsTabState extends State<_StudentsTab> {
                   headingTextStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
                   columns: [
                     const DataColumn(label: Text('')),
+                    const DataColumn(label: Text('Receipt')),
                     for (final c in _cols) DataColumn(label: Text(c.$2)),
                     const DataColumn(label: Text('Allotted on')),
                   ],
@@ -902,6 +941,11 @@ class _StudentsTabState extends State<_StudentsTab> {
                               messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
                             }
                           },
+                        )),
+                        DataCell(TextButton.icon(
+                          onPressed: () => _showReceipt(context, s),
+                          icon: const Icon(Icons.receipt_long_rounded, size: 17),
+                          label: const Text('View'),
                         )),
                         for (final c in _cols)
                           DataCell(

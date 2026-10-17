@@ -8,6 +8,9 @@ import type { Request, Response } from "firebase-functions/v2/https";
 import { getAuth } from "firebase-admin/auth";
 import { db, FieldValue, Timestamp, demoNow, logEvent, type Lead } from "./db";
 
+/** Bumped with every backend change; shown in Admin next to the app's build. */
+export const BACKEND_BUILD = "r10";
+
 type Who = { uid: string; role: string; name: string; anonymous: boolean };
 
 async function who(req: Request): Promise<Who | null> {
@@ -43,6 +46,11 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
 
   try {
     switch (route) {
+      case "version": {
+        // The app compares this with its own build: a mismatch means "run deploy".
+        res.json({ ok: true, build: BACKEND_BUILD });
+        return;
+      }
       // ------------------------------------------------------------- AI
       case "checkAi": {
         if (!isAdmin(w)) return deny();
