@@ -382,6 +382,19 @@ export async function flowGate(g: GateInput): Promise<GateResult | null> {
 
   // ---- 5. Enrolment: form → summary → email code → UPI QR ----
   if (enrollment && FORM_STATES.includes(enrollment.status)) return formStep(g, enrollment, text, choiceId, lang);
+
+  // ---- 6. "What is my admission ID / payment status / batch / demo time?" from the real records ----
+  if (!hasImage) {
+    const { statusTurn, saveLookup } = await import("./status");
+    const sr = await statusTurn(leadId, lead as never, text, lang);
+    if (sr) {
+      await saveLookup(leadId, sr.lookup);
+      const replyId = await say(leadId, msg.channel, sr.text, { kind: "status" });
+      await ref.set({ ai: { lastAnsweredId: msgId }, lastMessageAt: FieldValue.serverTimestamp() }, { merge: true });
+      return { reply: { text: sr.text, channel: msg.channel, lang, msgId: replyId } };
+    }
+  }
+
   const enrolled = enrollment && ["receipt_received", "verified"].includes(enrollment.status);
   if (!enrolled && looksLikeEnroll(text, choiceId)) return startForm(g, enrollment, lang);
   if (enrollment?.status === "awaiting_receipt" && !hasImage && looksLikePaid(text)) {
@@ -695,9 +708,11 @@ export async function verifyEnrollment(leadId: string, approve: boolean, by: str
     );
   }
 
-  // ---- Tell the student everywhere that is free ----
-  const sentTo: string[] = [];
-  const failed: string[] = [];
+  if (approve) {
+    const r = await sendAdmissionConfirmation(leadId, by);
+    await logEvent("enrolled", leadId, { course: courseName, by, amount: e.amount, admissionId: admissionId ?? "", sentTo: r.sentTo, failed: r.failed });
+    return { ok: true, admissionId, detail: `Admission ${admissionId}: ${courseName}. ${r.detail}` };
+  }
   const channel = lead.lastChannel ?? "web";
   let delivered = true;
   let deliveryNote = "";
@@ -706,6 +721,45 @@ export async function verifyEnrollment(leadId: string, approve: boolean, by: str
     const r = await deliverOn(channel, lead, text);
     delivered = r.delivered;
     deliveryNote = r.note;
+  }
+  await ref.collection("messages").add({
+    role: "ai",
+    channel,
+    text,
+    createdAt: FieldValue.serverTimestamp(),
+    meta: { kind: "enrollment_rejected", automatic: true, by, delivered, ...(deliveryNote ? { note: deliveryNote } : {}) },
+  });
+  await logEvent("payment_rejected", leadId, { course: courseName, by, amount: e.amount });
+  return { ok: true, detail: "Marked not verified; the student was told." };
+}
+
+/**
+ * The admission confirmation (ID, course, mode, batch, start), sent everywhere that is free:
+ * the student's chat (WhatsApp / Telegram / website), their email and their WhatsApp number.
+ * Used when an admin verifies, and by "Resend confirmation".
+ */
+export async function sendAdmissionConfirmation(leadId: string, by: string): Promise<{ ok: boolean; detail: string; sentTo: string[]; failed: string[] }> {
+  const ref = db.doc(`leads/${leadId}`);
+  const lead = (await ref.get()).data() as (Lead & { enrollment?: Enrollment; admissionId?: string }) | undefined;
+  const e = lead?.enrollment;
+  const admissionId = lead?.admissionId ?? (e as { admissionId?: string } | undefined)?.admissionId;
+  if (!lead || !e || e.status !== "verified" || !admissionId) return { ok: false, detail: "Not verified yet: verify and allot the course first.", sentTo: [], failed: [] };
+  const f = e.form ?? {};
+  const courseName = e.courseName ?? f.course ?? "the course";
+  const lang = lead.language ?? lead.uiLang;
+  const details = [f.mode ? `Mode: ${f.mode}` : "", f.batch ? `Batch: ${f.batch}` : "", f.start ? `Start: ${f.start}` : ""].filter(Boolean).join(" · ");
+  const text = `${ft("verified", lang, { amount: e.amount ?? "", course: courseName })}\n\n🆔 Admission ID: ${admissionId}${details ? `\n${details}` : ""}`;
+
+  const sentTo: string[] = [];
+  const failed: string[] = [];
+  const channel = lead.lastChannel ?? "web";
+  let delivered = true;
+  let note = "";
+  if (channel !== "web") {
+    const { deliverOn } = await import("./channels");
+    const r = await deliverOn(channel, lead, text);
+    delivered = r.delivered;
+    note = r.note;
     (r.delivered ? sentTo : failed).push(channel);
   } else sentTo.push("web chat");
   await ref.collection("messages").add({
@@ -713,27 +767,19 @@ export async function verifyEnrollment(leadId: string, approve: boolean, by: str
     channel,
     text,
     createdAt: FieldValue.serverTimestamp(),
-    meta: { kind: approve ? "enrollment_verified" : "enrollment_rejected", automatic: true, by, delivered, ...(deliveryNote ? { note: deliveryNote } : {}) },
+    meta: { kind: "enrollment_verified", automatic: true, by, delivered, ...(note ? { note } : {}) },
   });
-  if (approve) {
-    const wa = f.whatsapp;
-    if (wa && !(channel === "whatsapp" && lead.waId?.endsWith(wa))) {
-      const { sendWhatsAppText } = await import("./channels");
-      const r = await sendWhatsAppText(`91${wa}`, text);
-      (r.ok ? sentTo : failed).push(`WhatsApp +91 ${wa}`);
-    }
-    if (f.email) {
-      const { sendEmail } = await import("./email");
-      const r = await sendEmail(f.email, `Admission confirmed: ${admissionId}`, `${text.replace(/[🎉🆔]/gu, "").trim()}\n\nName: ${f.name ?? ""}\nCourse: ${courseName}`);
-      (r.ok ? sentTo : failed).push(`email ${f.email}`);
-    }
+  const wa = f.whatsapp;
+  if (wa && !(channel === "whatsapp" && lead.waId?.endsWith(wa))) {
+    const { sendWhatsAppText } = await import("./channels");
+    const r = await sendWhatsAppText(`91${wa}`, text);
+    (r.ok ? sentTo : failed).push(`WhatsApp +91 ${wa}`);
   }
-  await logEvent(approve ? "enrolled" : "payment_rejected", leadId, { course: courseName, by, amount: e.amount, admissionId: admissionId ?? "", sentTo, failed });
-  return {
-    ok: true,
-    admissionId,
-    detail: approve
-      ? `Admission ${admissionId}: ${courseName}. Sent to ${sentTo.join(", ") || "nobody"}${failed.length ? `; not delivered: ${failed.join(", ")}` : ""}.`
-      : "Marked not verified; the student was told.",
-  };
+  if (f.email) {
+    const { sendEmail } = await import("./email");
+    const r = await sendEmail(f.email, `Admission confirmed: ${admissionId}`, `${text.replace(/[🎉🆔]/gu, "").trim()}\n\nName: ${f.name ?? ""}\nCourse: ${courseName}`);
+    (r.ok ? sentTo : failed).push(`email ${f.email}`);
+  }
+  await ref.set({ enrollment: { confirmationSentAt: FieldValue.serverTimestamp(), confirmationSentTo: sentTo } }, { merge: true });
+  return { ok: sentTo.length > 0, sentTo, failed, detail: `Sent to ${sentTo.join(", ") || "nobody"}${failed.length ? `; not delivered: ${failed.join(", ")}` : ""}.` };
 }

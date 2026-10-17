@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app_theme.dart';
 import '../../services/auth_service.dart';
+import '../../services/repo.dart';
 import '../../utils/ist.dart';
 import '../../widgets/enrollment_card.dart';
 import '../../widgets/lead_widgets.dart';
@@ -80,6 +81,8 @@ class _MasterDashboardState extends State<MasterDashboard> {
           return ListView(
             padding: EdgeInsets.symmetric(horizontal: wide ? 28 : 12, vertical: 18),
             children: [
+              const _AskAi(),
+              const SizedBox(height: 16),
               _Kpis(people: people),
               const SizedBox(height: 16),
               Wrap(spacing: 16, runSpacing: 16, children: [
@@ -881,12 +884,25 @@ class _StudentsTabState extends State<_StudentsTab> {
                 child: DataTable(
                   headingTextStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
                   columns: [
+                    const DataColumn(label: Text('')),
                     for (final c in _cols) DataColumn(label: Text(c.$2)),
                     const DataColumn(label: Text('Allotted on')),
                   ],
                   rows: [
                     for (final s in rows)
                       DataRow(cells: [
+                        DataCell(IconButton(
+                          tooltip: 'Resend confirmation (chat + email + WhatsApp)',
+                          icon: const Icon(Icons.send_rounded, size: 18),
+                          onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            try {
+                              messenger.showSnackBar(SnackBar(content: Text(await Repo.resendConfirmation(admissionId: '${s['admissionId']}'))));
+                            } catch (e) {
+                              messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
+                            }
+                          },
+                        )),
                         for (final c in _cols)
                           DataCell(
                             c.$1 == 'address'
@@ -901,6 +917,117 @@ class _StudentsTabState extends State<_StudentsTab> {
             ),
         ]);
       },
+    );
+  }
+}
+
+
+/// "Ask AI" about all the data: counts, lists, who to call, trends.
+class _AskAi extends StatefulWidget {
+  const _AskAi();
+
+  @override
+  State<_AskAi> createState() => _AskAiState();
+}
+
+class _AskAiState extends State<_AskAi> {
+  final _q = TextEditingController();
+  bool _busy = false;
+  String? _answer;
+  List<List<String>> _rows = const [];
+
+  static const _examples = [
+    'How many students enrolled this week, by course?',
+    'Who paid but is not verified yet?',
+    'Which channel brings the most enquiries?',
+    'List hot leads with no demo booked',
+  ];
+
+  @override
+  void dispose() {
+    _q.dispose();
+    super.dispose();
+  }
+
+  Future<void> _ask([String? preset]) async {
+    if (preset != null) _q.text = preset;
+    final q = _q.text.trim();
+    if (q.isEmpty || _busy) return;
+    setState(() {
+      _busy = true;
+      _answer = null;
+      _rows = const [];
+    });
+    try {
+      final r = await Repo.askData(q);
+      if (mounted) {
+        setState(() {
+          _answer = r.answer;
+          _rows = r.rows;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _answer = '❌ $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: context.scheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.r16),
+        border: Border.all(color: AppTheme.ai.withValues(alpha: 0.4)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.auto_awesome_rounded, color: AppTheme.ai),
+          SizedBox(width: 8),
+          Text('Ask AI about your admissions data', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _q,
+              onSubmitted: (_) => _ask(),
+              decoration: const InputDecoration(hintText: 'e.g. How many enrolled in Full Stack Java this month?', isDense: true),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            onPressed: _busy ? null : _ask,
+            icon: _busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded, size: 17),
+            label: const Text('Ask'),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final x in _examples) ActionChip(label: Text(x, style: const TextStyle(fontSize: 12)), onPressed: _busy ? null : () => _ask(x)),
+        ]),
+        if (_answer != null) ...[
+          const SizedBox(height: 12),
+          SelectableText(_answer!, style: const TextStyle(fontSize: 14, height: 1.5)),
+        ],
+        if (_rows.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                headingTextStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+                columns: [for (final h in _rows.first) DataColumn(label: Text(h))],
+                rows: [
+                  for (final r in _rows.skip(1))
+                    DataRow(cells: [for (var i = 0; i < _rows.first.length; i++) DataCell(Text(i < r.length ? r[i] : ''))]),
+                ],
+              ),
+            ),
+          ),
+      ]),
     );
   }
 }

@@ -480,3 +480,9 @@ test("enrolment form: compulsory fields are validated", async () => {
   assert.equal(validate("batch", "शाम", undefined, st, kb, "hi").value, "Evening");
   assert.ok(bothModes("hybrid") && bothModes("Online + classroom") && !bothModes("online"));
 });
+
+test("status questions are recognised, course questions are not", async () => {
+  const { isStatusQuestion } = await import("../status");
+  for (const q of ["can u give me the admission id", "What is my payment status?", "mera batch kab hai", "मेरा एडमिशन आईडी क्या है", "माझा कोर्स कोणता", "my demo time?"]) assert.ok(isStatusQuestion(q), q);
+  for (const q of ["What is the batch timing for Java?", "Full Stack Java ki fees kitni hai?", "admission process kya hai"]) assert.ok(!isStatusQuestion(q), q);
+});

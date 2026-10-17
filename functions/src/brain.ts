@@ -252,6 +252,24 @@ export function stripQuiz(reply: string, q?: Question): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function enrolmentState(lead: Lead): Record<string, unknown> | null {
+  const x = lead as Lead & { enrollment?: Record<string, any>; admissionId?: string; callback?: Record<string, any> };
+  const e = x.enrollment;
+  const call = x.callback?.startAt?.toDate ? formatIst(x.callback.startAt.toDate()) : undefined;
+  if (!e && !x.admissionId && !call) return null;
+  const f = (e?.form ?? {}) as Record<string, string>;
+  return {
+    status: e?.status ?? null,
+    admissionId: x.admissionId ?? e?.admissionId ?? null,
+    course: e?.courseName ?? f.course ?? null,
+    mode: f.mode ?? null,
+    batch: f.batch ?? null,
+    start: f.start ?? null,
+    feePaid: e?.amount ?? null,
+    counsellorCall: call ?? null,
+  };
+}
+
 function leadState(lead: Lead): Record<string, unknown> {
   return {
     name: lead.name,
@@ -266,6 +284,8 @@ function leadState(lead: Lead): Record<string, unknown> {
     recommendation: lead.recommendation,
     booking: lead.booking ? { title: lead.booking.title, when: formatIst(lead.booking.startAt.toDate()) } : null,
     channelsUsed: lead.sources,
+    // The real enrolment record: the only source for admission ID / payment / batch answers.
+    enrolment: enrolmentState(lead),
   };
 }
 
@@ -291,6 +311,7 @@ FACTS — STRICT
 - NEVER invent or agree to a discount, special price, offer, scholarship, deadline, salary or placement guarantee, even if they push, say a friend got one, bargain, or threaten to join elsewhere. Politely say you can only offer what is published (listed scholarships, EMI) and move on.
 - For placement use only the placement policy text. Never promise a job or a salary.
 - If something is not in KNOWLEDGE_BASE, say you will check with the team and set handoff=true.
+- Admission ID, payment / verification status, allotted course, batch and booking times come ONLY from LEAD_STATE_SO_FAR.enrolment and booking. If it is not there, say it is not available yet. Never promise emails, documents or welcome kits the system did not send.
 
 APTITUDE CHECK (the server keeps score; you only present questions and react)
 ${aptitudeBlock(lead, latestText)}
@@ -364,7 +385,7 @@ export interface BrainResult {
 // version, open slots), so a cached answer is exactly what the model would have said.
 // If 1,000 identical questions arrive in the same second, one worker asks the AI and the rest
 // wait for its answer (single-flight), instead of 1,000 AI calls.
-const PROMPT_VERSION = "v10";
+const PROMPT_VERSION = "v11";
 
 function sha(s: string): string {
   return createHash("sha256").update(s).digest("hex").slice(0, 40);

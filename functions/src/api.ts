@@ -109,6 +109,22 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
         res.json(await verifyEnrollment(String(body.leadId ?? ""), body.approve !== false, w!.name, body.courseId ? String(body.courseId) : undefined, body.note ? String(body.note) : undefined));
         return;
       }
+      case "resendConfirmation": {
+        // Admin: send the admission confirmation again (chat + email + WhatsApp number).
+        if (!isAdmin(w)) return deny("only an admin can resend confirmations");
+        let leadId = String(body.leadId ?? "");
+        if (!leadId && body.admissionId) leadId = String((await db.doc(`students/${String(body.admissionId)}`).get()).get("leadId") ?? "");
+        const { sendAdmissionConfirmation } = await import("./flow");
+        res.json(await sendAdmissionConfirmation(leadId, w!.name));
+        return;
+      }
+      case "askData": {
+        // Master dashboard → Ask AI: questions about all leads and registered students.
+        if (!isAdmin(w)) return deny();
+        const { askData } = await import("./insights");
+        res.json({ ok: true, ...(await askData(String(body.question ?? ""))) });
+        return;
+      }
       case "testReminders": {
         // Desk → lead → "Test reminders now": the 24 h and 1 h reminders go out immediately.
         if (!isStaff(w)) return deny();

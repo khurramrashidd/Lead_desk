@@ -69,6 +69,18 @@ class _EnrollmentCardState extends State<EnrollmentCard> {
     });
   }
 
+  Future<void> _resend() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      messenger.showSnackBar(SnackBar(content: Text(await Repo.resendConfirmation(leadId: widget.leadId))));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _decide(bool approve) async {
     final messenger = ScaffoldMessenger.of(context);
     String? note;
@@ -168,6 +180,20 @@ class _EnrollmentCardState extends State<EnrollmentCard> {
               const SizedBox(height: 4),
               if (e['admissionId'] != null) SelectableText('🆔 Admission ID: ${e['admissionId']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
               if (e['courseName'] != null) Text('🎓 ${e['courseName']}', style: const TextStyle(fontSize: 13)),
+              if (Ist.fromTimestamp(e['confirmationSentAt']) != null)
+                Text(
+                  'Confirmation sent ${Ist.full(Ist.fromTimestamp(e['confirmationSentAt'])!)}'
+                  '${(e['confirmationSentTo'] as List?)?.isNotEmpty == true ? ' to ${(e['confirmationSentTo'] as List).join(', ')}' : ''}',
+                  style: TextStyle(fontSize: 12, color: context.scheme.onSurfaceVariant),
+                ),
+              if (admin) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : _resend,
+                  icon: const Icon(Icons.send_rounded, size: 17),
+                  label: const Text('Resend confirmation'),
+                ),
+              ],
             ]),
           ),
         if (form.isNotEmpty) ...[

@@ -222,6 +222,22 @@ class Repo {
     return '${d['detail'] ?? 'Done'}';
   }
 
+  /// Admin: send the admission confirmation again (chat + email + WhatsApp number).
+  static Future<String> resendConfirmation({String? leadId, String? admissionId}) async {
+    final d = await Api.call('resendConfirmation', {'leadId': ?leadId, 'admissionId': ?admissionId});
+    return '${d['ok'] == true ? '✅' : '❌'} ${d['detail'] ?? ''}';
+  }
+
+  /// Master dashboard → Ask AI: a question about all leads and registered students.
+  static Future<({String answer, List<List<String>> rows})> askData(String question) async {
+    final d = await Api.run('askData', {'question': question});
+    final rows = ((d['rows'] as List?) ?? const [])
+        .whereType<List>()
+        .map((r) => r.map((c) => '$c').toList())
+        .toList();
+    return (answer: '${d['answer'] ?? ''}', rows: rows);
+  }
+
   /// The stored receipt photo of an enrolment.
   static Future<Map<String, dynamic>?> message(String leadId, String msgId) async =>
       (await messages(leadId).doc(msgId).get()).data();

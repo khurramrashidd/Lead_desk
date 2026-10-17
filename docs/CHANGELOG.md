@@ -2,6 +2,17 @@
 
 Newest first. Earlier history is in the git log.
 
+## 17 Oct 2026 (9) — Asha answers from the records, Ask AI, resend confirmation (run `deploy all`)
+
+- **"What is my admission ID / payment status / batch / demo time?"** is answered from the real records
+  (admission ID, payment status, course · mode · batch · start, demo class and counsellor call times),
+  never guessed. Same chat (or a merged one): answered at once. Another chat or channel: the student types
+  the registered email, gets a 6-digit code by email, and only then sees the details.
+- Asha's AI also receives the enrolment record, and is told never to promise emails or documents that were not sent.
+- **Master dashboard → Ask AI**: plain-language questions about all leads and registered students, with an
+  answer and a table.
+- **Resend confirmation** (enrolment card and the Registered students table): chat + email + WhatsApp number.
+
 ## 17 Oct 2026 (8) — "ask first or enroll directly", live Verified state (run `deploy all`)
 
 - Every new chat (after the language) asks: **💬 Ask about courses first** or **✅ I know my course: enroll**.
