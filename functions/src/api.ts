@@ -89,6 +89,14 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
         res.json({ ...(await dispatchSafely(leadId, msgId, w.anonymous ? "app:web-chat" : "app:desk")) });
         return;
       }
+      case "testReminders": {
+        // Desk → lead → "Test reminders now": the 24 h and 1 h reminders go out immediately.
+        if (!isStaff(w)) return deny();
+        const { remindNow } = await import("./heartbeat");
+        const r = await remindNow(String(body.leadId ?? ""));
+        res.json({ ok: r.sent.length > 0, detail: r.sent.length ? `Sent: ${r.sent.join(", ")}` : "This lead has no demo class or call booked yet.", ...r });
+        return;
+      }
       case "diagnose": {
         if (!isAdmin(w)) return deny();
         const { runDiagnosis } = await import("./diagnose");

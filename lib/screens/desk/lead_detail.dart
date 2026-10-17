@@ -348,7 +348,7 @@ class _Insights extends StatelessWidget {
                 style: context.texts.bodyMedium?.copyWith(fontSize: 13),
               ),
             ),
-          if (callback != null) _CallbackCard(callback: callback, phone: d['phone'] as String?),
+          if (callback != null) _CallbackCard(leadId: leadId, callback: callback, phone: d['phone'] as String?),
           if (callTask != null) _CallTaskCard(leadId: leadId, task: callTask, phone: d['phone'] as String?, me: me),
 
           // ---- score with its breakdown
@@ -521,6 +521,7 @@ class _Insights extends StatelessWidget {
                 Text(Ist.full(Ist.fromTimestamp(booking['startAt']) ?? DateTime.now()), style: const TextStyle(fontSize: 13)),
                 const SizedBox(height: 10),
                 Wrap(spacing: 8, runSpacing: 6, children: [
+                  _TestRemindersButton(leadId: leadId),
                   _ReminderDot(done: booking['reminded24'] == true, label: '24 h reminder'),
                   _ReminderDot(done: booking['reminded1'] == true, label: '1 h reminder'),
                   _ReminderDot(
@@ -782,8 +783,45 @@ Future<void> _run(BuildContext context, Future<void> Function() job, String ok) 
   }
 }
 
+/// Sends the 24-hour and 1-hour reminders right now, so a booking can be tested without waiting.
+class _TestRemindersButton extends StatefulWidget {
+  const _TestRemindersButton({required this.leadId});
+  final String leadId;
+
+  @override
+  State<_TestRemindersButton> createState() => _TestRemindersButtonState();
+}
+
+class _TestRemindersButtonState extends State<_TestRemindersButton> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.tonalIcon(
+      onPressed: _busy
+          ? null
+          : () async {
+              final messenger = ScaffoldMessenger.of(context);
+              setState(() => _busy = true);
+              try {
+                messenger.showSnackBar(SnackBar(content: Text(await Repo.testReminders(widget.leadId))));
+              } catch (e) {
+                messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
+              } finally {
+                if (mounted) setState(() => _busy = false);
+              }
+            },
+      icon: _busy
+          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.alarm_rounded, size: 16),
+      label: const Text('Test reminders now'),
+    );
+  }
+}
+
 class _CallbackCard extends StatelessWidget {
-  const _CallbackCard({required this.callback, this.phone});
+  const _CallbackCard({required this.leadId, required this.callback, this.phone});
+  final String leadId;
   final Map<String, dynamic> callback;
   final String? phone;
 
@@ -799,6 +837,14 @@ class _CallbackCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(at == null ? '$kind · call back as soon as possible' : '$kind · ${Ist.full(at)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
         if (brief.isNotEmpty) ...[const SizedBox(height: 6), Text('“$brief”', style: const TextStyle(fontSize: 13, height: 1.45))],
+        if (at != null) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            _TestRemindersButton(leadId: leadId),
+            _ReminderDot(done: callback['reminded24'] == true, label: '24 h reminder'),
+            _ReminderDot(done: callback['reminded1'] == true, label: '1 h reminder'),
+          ]),
+        ],
         if (phone != null && phone!.isNotEmpty)
           Align(
             alignment: Alignment.centerLeft,

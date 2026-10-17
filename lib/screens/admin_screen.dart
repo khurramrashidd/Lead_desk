@@ -10,7 +10,6 @@ import '../config.dart';
 import '../data/links.dart';
 import '../data/seed.dart';
 import '../services/repo.dart';
-import '../widgets/simulator.dart';
 import '../widgets/site_widgets.dart';
 import 'admin/ai_settings_panel.dart';
 import 'admin/channels_panel.dart';
@@ -28,7 +27,7 @@ class AdminScreen extends StatelessWidget {
       child: Scaffold(
         backgroundColor: context.scheme.surfaceContainerLow,
         appBar: AppBar(
-          title: const Text('Admin console'),
+          title: const Text('Admin console · $kBuildLabel'),
           actions: [
             TextButton.icon(
               onPressed: () => Navigator.of(context).pushNamed('/desk'),
@@ -41,7 +40,7 @@ class AdminScreen extends StatelessWidget {
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             tabs: [
-              Tab(icon: Icon(Icons.rocket_launch_rounded, size: 18), text: 'Demo'),
+              Tab(icon: Icon(Icons.health_and_safety_rounded, size: 18), text: 'Overview'),
               Tab(icon: Icon(Icons.group_rounded, size: 18), text: 'Team'),
               Tab(icon: Icon(Icons.smart_toy_rounded, size: 18), text: 'AI engine'),
               Tab(icon: Icon(Icons.hub_rounded, size: 18), text: 'Channels'),
@@ -50,7 +49,7 @@ class AdminScreen extends StatelessWidget {
           ),
         ),
         body: const TabBarView(children: [
-          _Page(child: _DemoTab()),
+          _Page(child: _OverviewTab()),
           _Page(
             child: _Block(
               icon: Icons.group_add_rounded,
@@ -94,132 +93,29 @@ class _Page extends StatelessWidget {
   }
 }
 
-// ----------------------------------------------------------------- demo tab
-class _DemoTab extends StatefulWidget {
-  const _DemoTab();
-
-  @override
-  State<_DemoTab> createState() => _DemoTabState();
-}
-
-class _DemoTabState extends State<_DemoTab> {
-  bool _busy = false;
-
-  Future<void> _run(String done, Future<Object?> Function() job) async {
-    setState(() => _busy = true);
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final r = await job();
-      messenger.showSnackBar(SnackBar(content: Text('✅ $done${r is Map ? ' · ${r.entries.where((e) => e.key != 'ok').map((e) => '${e.key}: ${e.value}').join(', ')}' : ''}')));
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+// ------------------------------------------------------------- overview tab
+class _OverviewTab extends StatelessWidget {
+  const _OverviewTab();
 
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (_busy) const LinearProgressIndicator(minHeight: 3),
-      _Block(
-        icon: Icons.fact_check_rounded,
-        color: AppTheme.success,
-        title: 'PS3 self-test (proof for the judges)',
-        help: 'Runs every sentence of the problem statement against the live system (real AI, real database) and shows '
-            'pass/fail checks with the actual conversation as evidence. Run one by one or all in order; copy the report.',
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton.icon(
-            onPressed: () => Navigator.of(context).pushNamed('/selftest'),
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.success),
-            icon: const Icon(Icons.fact_check_rounded, size: 18),
-            label: const Text('Open the self-test'),
-          ),
-        ),
-      ),
-      _Block(
-        icon: Icons.dataset_rounded,
-        color: AppTheme.ai,
-        title: 'Demo data',
-        help: 'Loads the sample knowledge base, a 7-day calendar of demo classes + counsellor call slots, and 30 SAMPLE leads '
-            '(English, Hindi, Marathi, mixed; every channel; objections, scores, bookings) so the desk and reports look alive. '
-            'Sample leads are marked and removed with one click.',
-        child: Wrap(spacing: 10, runSpacing: 10, children: [
-          FilledButton.icon(
-            icon: const Icon(Icons.bolt_rounded, size: 18),
-            label: const Text('Load everything'),
-            onPressed: _busy ? null : () => _run('Demo data loaded', () => Repo.seed('all')),
-          ),
-          OutlinedButton(onPressed: _busy ? null : () => _run('Knowledge base loaded', () => Repo.seed('kb')), child: const Text('Courses only')),
-          OutlinedButton(onPressed: _busy ? null : () => _run('Slots created', () => Repo.seed('slots')), child: const Text('Demo & call slots')),
-          OutlinedButton(onPressed: _busy ? null : () => _run('Sample leads loaded', () => Repo.seed('leads')), child: const Text('30 sample leads')),
-          TextButton.icon(
-            icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-            onPressed: _busy ? null : () => _run('Sample leads removed', Repo.clearSeed),
-            label: const Text('Clear sample leads'),
-          ),
-        ]),
-      ),
-      _Block(
-        icon: Icons.science_rounded,
-        color: AppTheme.coral,
-        title: 'Simulate an enquiry',
-        help: 'WhatsApp, Instagram, Telegram, a phone call, a Google Form or the website form — exactly as if it arrived there. '
-            'Run the Rahul Patil presets 1 → 2 → 3 to show the same person recognised across channels and scripts.',
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton.icon(
-            onPressed: () => showSimulator(context),
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.coral),
-            icon: const Icon(Icons.send_rounded, size: 18),
-            label: const Text('Open the simulator'),
-          ),
-        ),
-      ),
-      _Block(
-        icon: Icons.speed_rounded,
-        color: AppTheme.hot,
-        title: 'Load test: many people at the same moment',
-        help: 'Creates N anonymous website visitors who all write at once, asking 3 common questions (like real traffic). '
-            'Watch the desk fill up, then open Reports → Scale & cost: identical questions are answered with one AI call '
-            '(single-flight cache), so 30 people cost about 3 AI calls. Load-test leads are removed by "Clear sample leads".',
-        child: Wrap(spacing: 10, runSpacing: 10, children: [
-          for (final n in const [10, 30, 100])
-            FilledButton.tonal(
-              onPressed: _busy ? null : () => _run('$n enquiries sent at once', () => Repo.burst(n)),
-              child: Text('$n at once'),
+      const DiagnoseCard(),
+      // An old demo clock offset would shift every reminder: show a reset only when one is set.
+      StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: Repo.watchDemoConfig(),
+        builder: (context, snap) {
+          final offset = (snap.data?.data()?['clockOffsetMinutes'] as num?)?.toInt() ?? 0;
+          if (offset == 0) return const SizedBox.shrink();
+          return Card(
+            margin: const EdgeInsets.only(bottom: 14),
+            child: ListTile(
+              leading: const Icon(Icons.history_toggle_off_rounded, color: AppTheme.hot),
+              title: Text('Server clock is ${offset ~/ 60} h ${offset % 60} min ahead (old demo setting)'),
+              trailing: FilledButton(onPressed: () => Repo.fastForward(hours: 0), child: const Text('Reset to real time')),
             ),
-          TextButton(onPressed: _busy ? null : () => _run('Counters reset', Repo.resetStats), child: const Text('Reset counters')),
-        ]),
-      ),
-      _Block(
-        icon: Icons.fast_forward_rounded,
-        color: AppTheme.warm,
-        title: 'Time machine (demo only)',
-        help: 'Moves the server clock forward and runs reminders and follow-ups immediately, so judges see "no lead forgotten" '
-            'without waiting a day.',
-        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: Repo.watchDemoConfig(),
-          builder: (context, snap) {
-            final offset = (snap.data?.data()?['clockOffsetMinutes'] as num?)?.toInt() ?? 0;
-            final last = snap.data?.data()?['lastRun'];
-            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                SmallInfo('Clock offset: ${offset ~/ 60} h ${offset % 60} min'),
-                if (last != null) SmallInfo('Last run: $last'),
-              ]),
-              const SizedBox(height: 12),
-              Wrap(spacing: 10, runSpacing: 10, children: [
-                FilledButton(onPressed: () => Repo.jumpToTomorrowMorning(), child: const Text('Tomorrow 11 AM')),
-                FilledButton.tonal(onPressed: () => Repo.fastForward(hours: 3), child: const Text('+3 hours')),
-                FilledButton.tonal(onPressed: () => Repo.fastForward(hours: 24), child: const Text('+1 day')),
-                FilledButton.tonal(onPressed: () => Repo.fastForward(hours: 48), child: const Text('+2 days')),
-                OutlinedButton(onPressed: () => Repo.fastForward(hours: 0), child: const Text('Reset')),
-              ]),
-            ]);
-          },
-        ),
+          );
+        },
       ),
       _Block(
         icon: Icons.qr_code_2_rounded,
@@ -233,7 +129,6 @@ class _DemoTabState extends State<_DemoTab> {
           _Qr('Google Form', PublicLinks.current.value.formUrl),
           _Qr('Website + chat', siteLink()),
           _Qr('Web chat (QR source)', chatLink('qr')),
-          _Qr('Instagram bio link', chatLink('instagram')),
           _Qr('Website form', formLink('form')),
         ]),
       ),

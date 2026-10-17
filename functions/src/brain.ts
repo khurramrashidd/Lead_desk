@@ -16,7 +16,7 @@ import { formatIst, googleCalendarUrl, normaliseQuestion, respectQuietHours, t }
 import { latinName, resolveIdentity } from "./merge";
 import { advanceOnboarding, nudgeText, onboardingBrief, type ObOption, type OnboardingState } from "./onboarding";
 import { offlineAnswer } from "./offline";
-import { advance, byId, formatQuestion, plan } from "./aptitude";
+import { advance, byId, formatQuestion, plan, readPick, type Question } from "./aptitude";
 import { computeScore } from "./scoring";
 import { decideNextAction } from "./nba";
 import { createCalendarEvent } from "./calendar";
@@ -97,6 +97,7 @@ const RESPONSE_SCHEMA = {
         event: { type: "string", enum: ["none", "offered", "started", "answered", "skipped"] },
         picked: { type: "string", description: "A, B or C if the latest message answers CURRENT_QUESTION, else empty." },
         shown_id: { type: "string", description: "Id of the aptitude question you ask in this reply, else empty." },
+        question_block: { type: "string", description: "The aptitude question you ask (translated): question line, then A) / B) / C) lines. Empty if none." },
       },
       required: ["event"],
     },
@@ -131,7 +132,7 @@ interface BrainOut {
   summary: string[];
   suggested_message: string;
   next_action: { message: string; reason_hint?: string };
-  aptitude: { event: string; picked?: string; shown_id?: string };
+  aptitude: { event: string; picked?: string; shown_id?: string; question_block?: string };
   recommendation?: { course_id: string; reason: string };
   book_slot_id?: string;
   kb_refs?: string[];
@@ -139,44 +140,115 @@ interface BrainOut {
   handoff_reason?: string;
 }
 
-function aptitudeBlock(lead: Lead): string {
+function aptitudeBlock(lead: Lead, latestText = ""): string {
   const p = plan(lead.aptitude, lead.profile);
   const s = p.state;
   const lines: string[] = [`status: ${s.status}, answered ${s.answers.length}/4, correct ${s.correct}`];
+  lines.push(
+    "RULES: the questions come ONLY from this block (never invent a quiz, riddle or sequence question of your own, before, during or after the check).",
+    "Do NOT write the aptitude question or its A/B/C options in \"reply\". Put the question you ask in \"question_block\" instead: the question translated into their language on one line, then \"A) …\", \"B) …\", \"C) …\" each on its own line (numbers as digits). The system shows it under your reply with tap buttons. In \"reply\" just react and lead in (e.g. \"Next one 👇\").",
+  );
   if (s.status === "done") {
-    lines.push(`RESULT (already shared): ${s.result}. Use it for the recommendation; do not run the check again.`);
+    lines.push(`RESULT (already shared): ${s.result}. Use it for the recommendation; do not run the check again. question_block must be empty.`);
   } else if (s.status === "skipped") {
-    lines.push("They declined the check. Do not offer it again unless they ask.");
+    lines.push("They declined the check. Do not offer it again unless they ask. question_block must be empty.");
   } else if (!p.current) {
     lines.push(
       "When you know their background and goal (usually after 2-3 exchanges) and they have not declined, OFFER a quick 4-question aptitude check (about 2 minutes) and set aptitude.event=\"offered\".",
-      "If the prospect agrees in their latest message, ask exactly FIRST_QUESTION now, set aptitude.event=\"started\" and aptitude.shown_id to its id.",
+      "If the prospect agrees in their latest message, set aptitude.event=\"started\", aptitude.shown_id to FIRST_QUESTION's id and put FIRST_QUESTION in question_block.",
       `FIRST_QUESTION: ${formatQuestion(p.first)}`,
     );
   } else {
-    lines.push(
-      `CURRENT_QUESTION (waiting for their answer): ${formatQuestion(p.current)} — correct answer: ${p.current.answer}`,
-      "If their latest message answers it: set aptitude.event=\"answered\" and aptitude.picked to the letter they chose (A/B/C; map an option's text or number to its letter).",
-      "React in a few words: if right, praise briefly; if wrong, kindly give the right answer with a one-line why. Never shame.",
-    );
-    if (p.finishesAfterThis) {
+    const cur = p.current;
+    const pick = readPick(latestText, cur);
+    lines.push(`CURRENT_QUESTION (on their screen, waiting for an answer): ${formatQuestion(cur)}`);
+    if (pick) {
+      // Scored HERE, before the model speaks, so Asha can never call a right answer wrong.
+      const correct = pick === cur.answer;
+      const opt = (k: string) => cur.options.find((o) => o.key === k)?.text ?? "";
       lines.push(
-        "This was the LAST question. After reacting, share the result in their language:",
-        `  if their answer is right → ${p.resultIfCorrect}`,
-        `  if their answer is wrong → ${p.resultIfWrong}`,
-        "then move on to your honest course recommendation. Set aptitude.shown_id to empty.",
+        `THEIR ANSWER (already checked by the system, do not re-judge): ${pick}) ${opt(pick)} → ${correct ? "CORRECT" : "WRONG"}. ${correct ? "Praise briefly." : `Kindly say the right answer is ${cur.answer}) ${opt(cur.answer)} with a one-line why.`}`,
+        `Set aptitude.event="answered" and aptitude.picked="${pick}".`,
       );
+      const next = correct ? p.nextIfCorrect : p.nextIfWrong;
+      if (p.finishesAfterThis) {
+        lines.push(
+          "This was the LAST question. After reacting, share the result in their language:",
+          `  ${correct ? p.resultIfCorrect : p.resultIfWrong}`,
+          "then move on to your honest course recommendation. aptitude.shown_id and question_block empty.",
+        );
+      } else if (next) {
+        lines.push(`Then ask NEXT_QUESTION: put it in question_block and set aptitude.shown_id="${next.id}".`, `NEXT_QUESTION: ${formatQuestion(next)}`);
+      }
     } else {
       lines.push(
-        `Then ask the next question: if right → NEXT_IF_CORRECT, if wrong → NEXT_IF_WRONG, and set aptitude.shown_id to the id you asked.`,
-        `NEXT_IF_CORRECT: ${formatQuestion(p.nextIfCorrect)}`,
-        `NEXT_IF_WRONG: ${formatQuestion(p.nextIfWrong)}`,
+        `Correct answer: ${cur.answer}. If their latest message answers it in words, set aptitude.event="answered" and aptitude.picked to the letter (A/B/C) they meant, react (right → brief praise; wrong → kindly give the right answer), then ask: if right → NEXT_IF_CORRECT, if wrong → NEXT_IF_WRONG (in question_block, shown_id = its id).`,
+        p.finishesAfterThis
+          ? `This is the LAST question: after reacting share the result (right → ${p.resultIfCorrect} / wrong → ${p.resultIfWrong}) and recommend a course; question_block empty.`
+          : `NEXT_IF_CORRECT: ${formatQuestion(p.nextIfCorrect)}\nNEXT_IF_WRONG: ${formatQuestion(p.nextIfWrong)}`,
+        "If they ask something else first, answer briefly; the system shows CURRENT_QUESTION again (shown_id = its id, question_block = it). If they want to stop, set aptitude.event=\"skipped\".",
       );
     }
-    lines.push("If they want to stop, set aptitude.event=\"skipped\". If they ask something else first, answer briefly and repeat CURRENT_QUESTION (shown_id = its id).");
   }
-  lines.push("Present a question as the question on one line, then each option on its own line as \"A) …\", \"B) …\", \"C) …\", translated into their language with numbers kept as digits.");
   return lines.join("\n");
+}
+
+/** The question as plain text, used when the model's own version is missing or does not match. */
+function plainQuestion(q: Question): string {
+  return `${q.text}\n${q.options.map((o) => `${o.key}) ${o.text}`).join("\n")}`;
+}
+
+/** The model's translated block is only trusted if it really is THIS question (same letters, same numbers). */
+function blockMatches(block: string, q: Question): boolean {
+  const b = (block ?? "").trim();
+  if (!b) return false;
+  for (const o of q.options) {
+    const line = b.split("\n").find((l) => new RegExp(`^\\s*\\(?${o.key}\\)`).test(l));
+    if (!line) return false;
+    const digits = o.text.match(/\d+/g);
+    if (digits && !digits.every((d) => line.includes(d))) return false;
+  }
+  const stemDigits = q.text.match(/\d+/g) ?? [];
+  return stemDigits.every((d) => b.includes(d));
+}
+
+/** True when the reply's verdict says the opposite of the server's scoring. */
+export function verdictConflicts(reply: string, correct: boolean): boolean {
+  const r = reply.toLowerCase();
+  const saysWrong = /\b(oops|wrong|incorrect|not quite|not correct|right answer (was|is)|correct answer (was|is)|galat)\b|गलत|चूक|सही जवाब (था|है)/.test(r);
+  const saysRight = /^\W*(✅\s*)?(correct|right|that's right|that is right|well done|great|sahi|bilkul|सही|बरोबर|शाबास)\b/.test(r);
+  return correct ? saysWrong : saysRight && !saysWrong;
+}
+
+/** Removes any quiz the model wrote into the reply itself (option lines and the question line above them). */
+export function stripQuiz(reply: string, q?: Question): string {
+  const lines = reply.split("\n");
+  const isOpt = (l: string) => /^\s*\(?[A-Ca-c]\)\s*\S/.test(l);
+  const optLines = lines.filter(isOpt).length;
+  const seq = q ? (q.text.match(/\d+/g) ?? []) : [];
+  const seqRe = seq.length >= 3 ? new RegExp(seq.slice(0, 3).join("\\D{1,4}")) : null;
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (optLines >= 2 && isOpt(l)) continue;
+    const quizLine =
+      (optLines >= 2 && l.includes("?") && i + 1 < lines.length && isOpt(lines[i + 1])) ||
+      (seqRe !== null && seqRe.test(l)) ||
+      (!!q && l.toLowerCase().includes(q.text.toLowerCase().slice(0, 28)));
+    if (quizLine) {
+      // Keep the sentences before the question ("Great work! Next one: What comes next…?" → "Great work!").
+      const sentences = l.split(/(?<=[.!।])\s+/);
+      const keep: string[] = [];
+      for (const x of sentences) {
+        if (x.includes("?") || (seqRe !== null && seqRe.test(x)) || /\d+\s*,\s*\d+\s*,\s*\d+/.test(x)) break;
+        keep.push(x);
+      }
+      if (keep.length) out.push(keep.join(" "));
+      continue;
+    }
+    out.push(l);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function leadState(lead: Lead): Record<string, unknown> {
@@ -196,7 +268,7 @@ function leadState(lead: Lead): Record<string, unknown> {
   };
 }
 
-function systemPrompt(kb: KnowledgeBase, slots: Slot[], lead: Lead, channel: string, now: Date, intake = ""): string {
+function systemPrompt(kb: KnowledgeBase, slots: Slot[], lead: Lead, channel: string, now: Date, intake = "", latestText = ""): string {
   const slotList = slots.map((s) => ({ id: s.id, title: s.title, course: s.courseId ?? "", when: formatIst(s.startAt.toDate()), mode: s.mode, seatsLeft: s.capacity - s.booked }));
   const state = leadState(lead);
   return `You are Asha, the admissions counsellor of ${kb.instituteName}, a tech training institute in ${kb.city}. You are chatting on ${channel}. Current time: ${formatIst(now)}.
@@ -220,7 +292,7 @@ FACTS — STRICT
 - If something is not in KNOWLEDGE_BASE, say you will check with the team and set handoff=true.
 
 APTITUDE CHECK (the server keeps score; you only present questions and react)
-${aptitudeBlock(lead)}
+${aptitudeBlock(lead, latestText)}
 
 RECOMMENDATION
 - After the aptitude check is done or skipped and you know their goal, recommend ONE course from KNOWLEDGE_BASE (use its id) with an honest reason tied to their background, goal, constraints and aptitude. If a big course is wrong for them today, say so kindly and suggest the right first step.
@@ -289,7 +361,7 @@ export interface BrainResult {
 // version, open slots), so a cached answer is exactly what the model would have said.
 // If 1,000 identical questions arrive in the same second, one worker asks the AI and the rest
 // wait for its answer (single-flight), instead of 1,000 AI calls.
-const PROMPT_VERSION = "v9";
+const PROMPT_VERSION = "v10";
 
 function sha(s: string): string {
   return createHash("sha256").update(s).digest("hex").slice(0, 40);
@@ -523,7 +595,7 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
   }
   if (lead.onboarding?.step === "done" && !lead.onboarding.briefed) intake = onboardingBrief(lead.onboarding, kb.courses);
 
-  const system = systemPrompt(kb, slots, lead, msg.channel, now, intake);
+  const system = systemPrompt(kb, slots, lead, msg.channel, now, intake, msg.text && !msg.text.startsWith("🎤") ? msg.text : "");
   const turns = toTurns(history, new Set(unansweredIdx));
   const userTexts = history.filter((m) => m.role === "user").map((m) => m.text || m.transcript || "");
 
@@ -617,10 +689,23 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
   }
   if (apt.scored) await logEvent("aptitude_answer", leadId, { ...apt.scored, level: byId(apt.scored.id)?.level });
   if (apt.state.status === "done" && lead.aptitude?.status !== "done") await logEvent("aptitude_done", leadId, { result: apt.state.result, band: apt.state.band });
-  const shownQuestion = apt.state.current && apt.state.current !== lead.aptitude?.current ? byId(apt.state.current) : undefined;
+  // While a question is waiting for an answer it is ALWAYS shown under the reply, from the
+  // server's own bank, so the text and the tap buttons can never disagree with the scoring.
+  const shownQuestion = apt.state.status === "in_progress" && apt.state.current ? byId(apt.state.current) : undefined;
 
   // ---- Booking ----
-  let replyText = out.reply;
+  let replyText = stripQuiz(out.reply, shownQuestion);
+  if (apt.scored && verdictConflicts(replyText, apt.scored.correct)) {
+    // The model contradicted the server's scoring: the server's verdict wins.
+    const q = byId(apt.scored.id);
+    const right = q?.options.find((o) => o.key === q.answer);
+    replyText = apt.scored.correct ? t("aptRight", out.language) : t("aptWrong", out.language, { answer: right ? `${right.key}) ${right.text}` : "" });
+  }
+  if (!replyText) replyText = shownQuestion ? t("aptNext", out.language) : out.reply;
+  if (shownQuestion) {
+    const block = out.aptitude?.question_block ?? "";
+    replyText = `${replyText}\n\n${blockMatches(block, shownQuestion) ? block.trim() : plainQuestion(shownQuestion)}`;
+  }
   let booking: Lead["booking"] | undefined;
   if (out.book_slot_id && out.book_slot_id !== lead.booking?.slotId) {
     booking = await bookSlot(leadId, lead, out.book_slot_id, kb, out.language).catch((e) => {

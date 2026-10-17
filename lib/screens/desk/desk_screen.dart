@@ -10,7 +10,6 @@ import '../../services/team_service.dart';
 import '../../utils/ist.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/brand.dart';
-import '../../widgets/simulator.dart';
 import '../auth/account_sheet.dart';
 import '../auth/auth_gate.dart';
 import 'activity_feed.dart';
@@ -175,13 +174,7 @@ class _DeskScreenState extends State<DeskScreen> {
       actions: [
         if (!compact) const Padding(padding: EdgeInsets.only(right: 4), child: Center(child: IstClock())),
 
-        IconButton(
-          tooltip: 'Simulate an enquiry (WhatsApp, Instagram, call, form…)',
-          icon: const Icon(Icons.science_outlined),
-          onPressed: () => showSimulator(context, onOpen: _open),
-        ),
         _AlertsButton(onOpen: _open),
-        const _TimeMachineButton(),
         if (StaffScope.isAdmin(context)) const _AdminButton(),
         if (!compact)
           IconButton(
@@ -426,39 +419,6 @@ class _AdminButton extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _TimeMachineButton extends StatelessWidget {
-  const _TimeMachineButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<int>(
-      tooltip: 'Demo time machine',
-      icon: const Icon(Icons.fast_forward_rounded),
-      onSelected: (h) async {
-        final messenger = ScaffoldMessenger.of(context);
-        if (h == -1) {
-          await Repo.jumpToTomorrowMorning();
-        } else {
-          await Repo.fastForward(hours: h);
-        }
-        messenger.showSnackBar(SnackBar(
-          content: Text(h == 0
-              ? 'Clock reset to real time.'
-              : h == -1
-                  ? '⏩ Now tomorrow 11 AM: due reminders and follow-ups are firing.'
-                  : '⏩ Jumped $h hours ahead: reminders and follow-ups are firing now.'),
-        ));
-      },
-      itemBuilder: (_) => const [
-        PopupMenuItem(value: -1, child: ListTile(leading: Icon(Icons.wb_sunny_outlined), title: Text('Jump to tomorrow 11 AM'), dense: true)),
-        PopupMenuItem(value: 24, child: ListTile(leading: Icon(Icons.fast_forward), title: Text('Fast-forward 1 day'), dense: true)),
-        PopupMenuItem(value: 48, child: ListTile(leading: Icon(Icons.fast_forward), title: Text('Fast-forward 2 days'), dense: true)),
-        PopupMenuItem(value: 0, child: ListTile(leading: Icon(Icons.restore), title: Text('Reset to real time'), dense: true)),
-      ],
     );
   }
 }

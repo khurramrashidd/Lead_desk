@@ -190,7 +190,13 @@ export function readPick(raw: string | undefined, current?: Question): "A" | "B"
   if (!raw) return undefined;
   const t = raw.trim();
   const m = t.match(/^\(?\s*([abcABC])\s*[).:\-]?(\s|$)/) || t.match(/\boption\s*([abc])\b/i) || t.match(/^([abc])$/i);
-  if (m) return m[1].toUpperCase() as "A" | "B" | "C";
+  if (m) {
+    // "A) 10" when A is 9 and B is 10: the value they typed wins over the letter.
+    const rest = t.slice(m[0].length).trim().toLowerCase();
+    const byText = rest && current?.options.find((o) => o.text.toLowerCase() === rest);
+    if (byText) return byText.key;
+    return m[1].toUpperCase() as "A" | "B" | "C";
+  }
   if (/^(ए|अ)$/.test(t)) return "A";
   if (/^(बी|ब)$/.test(t)) return "B";
   if (/^(सी|क)$/.test(t)) return "C";

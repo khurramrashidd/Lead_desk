@@ -84,7 +84,7 @@ class _ChannelsPanelState extends State<ChannelsPanel> {
     if (!_loaded) return const LinearProgressIndicator();
     final secret = _c['intakeSecret']!.text.trim();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const _DiagnoseCard(),
+      const DiagnoseCard(),
       const _PublicLinksCard(),
       Card(
         margin: const EdgeInsets.only(bottom: 14),
@@ -166,8 +166,7 @@ class _ChannelsPanelState extends State<ChannelsPanel> {
         icon: Icons.camera_alt_rounded,
         title: 'Instagram DMs',
         steps: 'Needs an Instagram Professional account + the Meta app (Instagram API with Instagram Login). Add the Instagram '
-            'product, generate a token, subscribe the same webhook URL to "messages". Until then use Desk → 🧪 Simulate → Instagram, '
-            'which goes through exactly the same code.',
+            'product, generate a token, subscribe the same webhook URL to "messages".',
         fields: [_field('igToken', 'Instagram access token', secret: true), _field('igUserId', 'Instagram user ID')],
         copy: {'Webhook URL': '$_base/metaWebhook'},
         status: _status['ig'],
@@ -215,8 +214,7 @@ class _ChannelsPanelState extends State<ChannelsPanel> {
         icon: Icons.phone_in_talk_rounded,
         title: 'Phone calls (Exotel / Twilio / Plivo / Knowlarity)',
         steps: 'Point the provider\'s missed-call or voicemail callback (passthru / status callback) at this URL. The caller\'s number '
-            'and any recording become a "call" lead; Asha follows up on WhatsApp and the desk gets a call task. '
-            'Demo without a provider: Desk → 🧪 Simulate → Phone call.',
+            'and any recording become a "call" lead; Asha follows up on WhatsApp and the desk gets a call task.',
         fields: const [],
         copy: {'Call webhook': '$_base/callWebhook?key=$secret'},
         status: null,
@@ -323,14 +321,14 @@ class _Channel extends StatelessWidget {
 
 /// One button that checks everything Asha needs to answer: the message trigger, the database
 /// region, the AI keys, the Telegram webhook, the WhatsApp subscription and the last webhook calls.
-class _DiagnoseCard extends StatefulWidget {
-  const _DiagnoseCard();
+class DiagnoseCard extends StatefulWidget {
+  const DiagnoseCard({super.key});
 
   @override
-  State<_DiagnoseCard> createState() => _DiagnoseCardState();
+  State<DiagnoseCard> createState() => _DiagnoseCardState();
 }
 
-class _DiagnoseCardState extends State<_DiagnoseCard> {
+class _DiagnoseCardState extends State<DiagnoseCard> {
   bool _running = false;
   String? _error;
   List<Map<String, dynamic>> _checks = const [];

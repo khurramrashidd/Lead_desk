@@ -425,3 +425,16 @@ test("AI down: Asha still answers from the knowledge base", () => {
   assert.ok(checkReply(a, kb, ["fees?"]).ok, "offline answer must pass the Guard");
   assert.match(offlineAnswer(kb, "batch kab start hogi", "en"), /3 Nov 2026/);
 });
+
+test("aptitude: typed value beats a mismatched letter; quiz text the model invents is removed", async () => {
+  const { byId, readPick } = await import("../aptitude");
+  const { stripQuiz } = await import("../brain");
+  const q = byId("e2")!; // 2, 4, 6, 8 → B) 10
+  assert.equal(readPick("A) 10", q), "B");
+  assert.equal(readPick("B) 10", q), "B");
+  assert.equal(readPick("10", q), "B");
+  assert.equal(readPick("a", q), "A");
+  const cleaned = stripQuiz("Oops, try again.\nWhat comes next: 2, 4, 6, 8, ?\nA) 9\nB) 10\nC) 12", q);
+  assert.equal(cleaned, "Oops, try again.");
+  assert.equal(stripQuiz("Would you like a demo on Mon 11 AM?"), "Would you like a demo on Mon 11 AM?");
+});

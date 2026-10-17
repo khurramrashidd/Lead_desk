@@ -2,6 +2,21 @@
 
 Newest first. Earlier history is in the git log.
 
+## 17 Oct 2026 (5) — final build: aptitude fix, call reminders, cleaner admin (run `deploy all`)
+
+- **Aptitude check (Telegram bug):** a right answer was called wrong, the AI invented its own
+  question, and the buttons belonged to a different question. Now the server scores the answer
+  *before* the AI speaks, the question text and the tap buttons always come from the server's bank,
+  invented quiz questions are removed, and if the AI still contradicts the score the server's verdict wins.
+  "A) 10" counts as the answer 10.
+- **Reminders for counsellor calls / video meetings** (they were promised but never sent), "today" vs
+  "tomorrow" in the wording, and **Desk → lead → Test reminders now** sends the 24 h + 1 h reminders instantly.
+- Demo and call slots are topped up automatically every day (no "create slots" button needed).
+- **Admin:** removed the simulator, self-test, load test, demo data and time machine (also from the desk
+  toolbar). New **Overview** tab: Diagnose + QR codes. The title bar shows the build (`build r5`).
+- Web: index/JS are served with `no-cache`, so a new `deploy hosting` shows up on the next refresh.
+- `deploy all` = backend + web in one go.
+
 ## 17 Oct 2026 (4) — Asha answers on every channel even without the Firestore trigger (backend + app changed: run `deploy` and `deploy hosting`)
 
 **Symptoms fixed:** Asha never answered (web chat, Telegram) although every AI key tested fine; Telegram messages

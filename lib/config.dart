@@ -19,3 +19,7 @@ String publicBaseUrl() => kIsWeb ? Uri.base.origin : kPublicWebUrl;
 String chatLink(String src) => '${publicBaseUrl()}/#/chat?src=$src';
 String formLink(String src) => '${publicBaseUrl()}/#/form?src=$src';
 String siteLink() => publicBaseUrl();
+
+/// Shown in the Admin title bar: if you do not see this after `deploy hosting`, the browser is
+/// still showing the old version (press Ctrl+Shift+R).
+const kBuildLabel = 'build r5 · 17 Oct';

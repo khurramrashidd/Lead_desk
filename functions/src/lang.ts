@@ -70,14 +70,51 @@ const T: Record<string, Record<Lang, string>> = {
     mr: "माफ करा, तो स्लॉट आत्ताच भरला. दुसरी वेळ निवडाल का?",
   },
   remind24: {
-    en: "⏰ Reminder: your demo class {title} is tomorrow, {when}. Reply here if you need to change it.",
-    hi: "⏰ याद दिला दें: आपकी डेमो क्लास {title} कल है, {when}. बदलना हो तो यहीं बताइए।",
-    mr: "⏰ आठवण: तुमचा डेमो क्लास {title} उद्या आहे, {when}. बदल हवा असल्यास इथेच कळवा.",
+    en: "⏰ Reminder: your demo class {title} is {day}, {when}. Reply here if you need to change it.",
+    hi: "⏰ याद दिला दें: आपकी डेमो क्लास {title} {day} है, {when}. बदलना हो तो यहीं बताइए।",
+    mr: "⏰ आठवण: तुमचा डेमो क्लास {title} {day} आहे, {when}. बदल हवा असल्यास इथेच कळवा.",
   },
   remind1: {
     en: "⏰ Your demo class {title} starts in 1 hour ({when}). See you there!",
     hi: "⏰ आपकी डेमो क्लास {title} 1 घंटे में शुरू होगी ({when}). मिलते हैं!",
     mr: "⏰ तुमचा डेमो क्लास {title} 1 तासात सुरू होईल ({when}). भेटूया!",
+  },
+  remindCall24: {
+    en: "⏰ Reminder: your {kind} with our counsellor is {day}, {when}. Reply here if you need to change it.",
+    hi: "⏰ याद दिला दें: हमारे काउंसलर के साथ आपकी {kind} {day} है, {when}. बदलना हो तो यहीं बताइए।",
+    mr: "⏰ आठवण: आमच्या काउन्सेलरसोबत तुमचा {kind} {day} आहे, {when}. बदल हवा असल्यास इथेच कळवा.",
+  },
+  remindCall1: {
+    en: "⏰ Your {kind} with our counsellor is in 1 hour ({when}). Please keep your phone free.",
+    hi: "⏰ हमारे काउंसलर के साथ आपकी {kind} 1 घंटे में है ({when}). कृपया फ़ोन फ्री रखें।",
+    mr: "⏰ आमच्या काउन्सेलरसोबत तुमचा {kind} 1 तासात आहे ({when}). कृपया फोन मोकळा ठेवा.",
+  },
+  today: { en: "today", hi: "आज", mr: "आज" },
+  tomorrow: { en: "tomorrow", hi: "कल", mr: "उद्या" },
+  callKind: {
+    en: "phone call",
+    hi: "फ़ोन कॉल",
+    mr: "फोन कॉल",
+  },
+  meetKind: {
+    en: "video meeting",
+    hi: "वीडियो मीटिंग",
+    mr: "व्हिडिओ मीटिंग",
+  },
+  aptRight: {
+    en: "✅ Correct, well done!",
+    hi: "✅ सही जवाब, बहुत बढ़िया!",
+    mr: "✅ बरोबर, छान!",
+  },
+  aptWrong: {
+    en: "Not quite: the right answer is {answer}. No worries, let's keep going.",
+    hi: "यह सही नहीं है: सही जवाब {answer} है। कोई बात नहीं, आगे बढ़ते हैं।",
+    mr: "हे बरोबर नाही: बरोबर उत्तर {answer} आहे. काही हरकत नाही, पुढे जाऊया.",
+  },
+  aptNext: {
+    en: "Next one 👇",
+    hi: "अगला सवाल 👇",
+    mr: "पुढचा प्रश्न 👇",
   },
   safeFallback: {
     en: "I want to give you only accurate information, so I'll have our counsellor confirm this for you shortly. Meanwhile, is there anything else about the course I can help with?",

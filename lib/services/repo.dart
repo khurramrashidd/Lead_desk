@@ -203,6 +203,12 @@ class Repo {
       Api.run('dismissDuplicate', {'leadId': leadId, 'otherId': otherId});
   static Future<void> assign(String leadId, String uid) => Api.run('assign', {'leadId': leadId, 'uid': uid});
   static Future<void> book(String leadId, String slotId) => Api.run('book', {'leadId': leadId, 'slotId': slotId});
+
+  /// Sends this lead's 24 h and 1 h reminders (demo class and/or call) right now.
+  static Future<String> testReminders(String leadId) async {
+    final d = await Api.call('testReminders', {'leadId': leadId});
+    return '${d['ok'] == true ? '✅' : 'ℹ️'} ${d['detail'] ?? ''}';
+  }
   static Future<Map<String, dynamic>> seed(String what) => Api.run('seed', {'what': what});
   static Future<Map<String, dynamic>> clearSeed() => Api.run('clearSeed');
 
