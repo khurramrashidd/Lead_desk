@@ -7,6 +7,7 @@ import '../../app_theme.dart';
 import '../../services/repo.dart';
 import '../../services/team_service.dart';
 import '../../utils/ist.dart';
+import '../../widgets/enrollment_card.dart';
 import '../../widgets/lead_widgets.dart';
 import '../../widgets/message_bubble.dart';
 
@@ -348,6 +349,7 @@ class _Insights extends StatelessWidget {
                 style: context.texts.bodyMedium?.copyWith(fontSize: 13),
               ),
             ),
+          if (_map('enrollment') != null) EnrollmentCard(leadId: leadId, enrollment: _map('enrollment')!),
           if (callback != null) _CallbackCard(leadId: leadId, callback: callback, phone: d['phone'] as String?),
           if (callTask != null) _CallTaskCard(leadId: leadId, task: callTask, phone: d['phone'] as String?, me: me),
 

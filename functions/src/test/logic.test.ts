@@ -438,3 +438,23 @@ test("aptitude: typed value beats a mismatched letter; quiz text the model inven
   assert.equal(cleaned, "Oops, try again.");
   assert.equal(stripQuiz("Would you like a demo on Mon 11 AM?"), "Would you like a demo on Mon 11 AM?");
 });
+
+test("chat flow: language picks, restart words, enroll words, UPI link", async () => {
+  const { parseLang, isRestart, looksLikeEnroll, looksLikePaid, upiLink, guessLang } = await import("../flow");
+  assert.equal(parseLang("हिंदी"), "hi");
+  assert.equal(parseLang("Marathi"), "mr");
+  assert.equal(parseLang("1"), "en");
+  assert.equal(parseLang("x", "lang:mr"), "mr");
+  assert.equal(parseLang("tell me fees"), undefined);
+  assert.equal(guessLang("मला जावा शिकायचं आहे"), "mr");
+  assert.equal(guessLang("fees kitni hai"), "hi");
+  assert.ok(isRestart("Restart") && isRestart("/start") && isRestart("पुन्हा सुरू"));
+  assert.ok(!isRestart("restart my career in IT"));
+  assert.ok(looksLikeEnroll("✅ Enroll now") && looksLikeEnroll("", "enroll:yes") && looksLikeEnroll("✅ अभी एनरोल करें"));
+  assert.ok(!looksLikeEnroll("what is the enrollment process?"));
+  assert.ok(looksLikePaid("payment done"));
+  assert.equal(
+    upiLink({ upiId: "inst@okhdfc", payee: "Sech Tummit", amount: 10 }, "Registration Java"),
+    "upi://pay?pa=inst%40okhdfc&pn=Sech%20Tummit&am=10.00&cu=INR&tn=Registration%20Java",
+  );
+});

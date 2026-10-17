@@ -2,6 +2,27 @@
 
 Newest first. Earlier history is in the git log.
 
+## 17 Oct 2026 (6) — enrolment payments, chat sessions, master dashboard (run `deploy all`)
+
+- **Language first** on every new chat: buttons English / हिंदी / मराठी on WhatsApp and Telegram, a
+  language screen on the website. Asha then speaks that language.
+- **Auto-close after 2 minutes of silence** (counted from Asha's last reply; 15 minutes while a payment
+  receipt is awaited). The student is told the chat closed; any message starts a fresh chat.
+  New scheduled function `sessionCloser` (every minute).
+- **Restart**: type `restart` (or `/start`) on WhatsApp / Telegram, or the ⟲ button in the website chat.
+- **Enroll now → UPI QR → receipt**: once a course is recommended an "Enroll now" button appears; Asha
+  shows the admin's UPI QR for the registration fee (₹10 by default; Admin → Overview → Enrollment payments),
+  the student sends a photo of the receipt, gets "thank you, confirmation within 24 hours", and the chat
+  closes. Admins get an alert; **Verify & allot course** / **Not verified** on the desk or the master
+  dashboard tells the student on their own channel.
+- **Master dashboard** (Admin → Master dashboard): KPIs, enquiries per day, funnel, sources, who enquired;
+  one row per person (same phone or email merged across channels, times and enquirers), filters, search,
+  copy as CSV, and a full view with timeline, questions, payment, call / WhatsApp / open conversation.
+- WhatsApp: the verify token from functions/.env is also accepted; Diagnose shows which settings come
+  from Admin vs .env and which .env AI keys are failing.
+- Firestore rules: a student's chat can no longer change enrolment, status or session fields.
+- New packages: `qrcode` (backend), `image_picker` (app, for the receipt photo).
+
 ## 17 Oct 2026 (5) — final build: aptitude fix, call reminders, cleaner admin (run `deploy all`)
 
 - **Aptitude check (Telegram bug):** a right answer was called wrong, the AI invented its own

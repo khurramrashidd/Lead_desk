@@ -40,7 +40,11 @@ service cloud.firestore {
     match /leads/{leadId} {
       allow read: if isCounsellor() || isViewer(resource.data);
       allow create: if isCounsellor() || isViewer(request.resource.data);
-      allow update: if isCounsellor() || isViewer(resource.data);
+      // A student's own chat may touch its timestamps, never payment / enrolment / session state.
+      allow update: if isCounsellor()
+                    || (isViewer(resource.data)
+                        && !request.resource.data.diff(resource.data).affectedKeys()
+                              .hasAny(['enrollment', 'enrolledCourseId', 'enrolledCourseName', 'status', 'session', 'viewerUids']));
       allow delete: if isAdmin();
 
       match /messages/{msgId} {

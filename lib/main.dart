@@ -7,6 +7,7 @@ import 'app_theme.dart';
 import 'data/links.dart';
 import 'firebase_options.dart';
 import 'l10n.dart';
+import 'screens/master/master_dashboard.dart';
 import 'screens/admin_screen.dart';
 import 'screens/auth/auth_gate.dart';
 import 'screens/chat/prospect_chat_screen.dart';
@@ -68,6 +69,8 @@ class LeadDeskApp extends StatelessWidget {
               page = const AuthGate(requireAdmin: true, child: AdminScreen());
             case '/demo':
               page = const DemoHubScreen();
+            case '/master':
+              page = const AuthGate(requireAdmin: true, child: MasterDashboard());
             case '/selftest':
               page = const AuthGate(requireAdmin: true, child: SelfTestScreen());
             default:

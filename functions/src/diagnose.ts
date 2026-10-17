@@ -94,7 +94,7 @@ export async function runDiagnosis(): Promise<Check[]> {
     if (r.ok) {
       const fns = (r.json.functions ?? []) as { name: string; state?: string; stateMessages?: { message?: string }[] }[];
       const byName = new Map(fns.map((f) => [f.name.split("/").pop()!.toLowerCase(), f]));
-      const want = ["onMessageCreated", "metaWebhook", "telegramWebhook", "api", "aiRetry", "heartbeat", "onLeadCreated", "onStaffWritten"];
+      const want = ["onMessageCreated", "metaWebhook", "telegramWebhook", "api", "aiRetry", "heartbeat", "sessionCloser", "onLeadCreated", "onStaffWritten"];
       const missing = want.filter((n) => !byName.has(n.toLowerCase()));
       const broken = want.filter((n) => byName.get(n.toLowerCase()) && byName.get(n.toLowerCase())!.state !== "ACTIVE");
       const trig = byName.get("onmessagecreated");
@@ -200,6 +200,50 @@ export async function runDiagnosis(): Promise<Check[]> {
       checks.push({ name: "WhatsApp", ok: null, detail: String((e as Error).message).slice(0, 200) });
     }
   }
+  // ---- 6. Where each setting comes from (Admin wins over functions/.env) ----
+  try {
+    const saved = (await db.doc("config/channels").get()).data() ?? {};
+    const rows: string[] = [];
+    let stale = 0;
+    for (const [k, env, label] of [
+      ["waToken", "WA_TOKEN", "WhatsApp token"],
+      ["waPhoneId", "WA_PHONE_ID", "WhatsApp phone ID"],
+      ["waVerifyToken", "WA_VERIFY_TOKEN", "WhatsApp verify token"],
+      ["telegramBotToken", "TELEGRAM_BOT_TOKEN", "Telegram bot token"],
+    ] as const) {
+      const a = String(saved[k] ?? "").trim();
+      const e = (process.env[env] ?? "").trim();
+      const from = a ? "Admin" : e ? ".env" : "default/empty";
+      const differs = !!a && !!e && a !== e;
+      if (differs) stale++;
+      rows.push(`${label}: ${from}${differs ? " (functions\\.env has a different, unused value)" : ""}`);
+    }
+    checks.push({
+      name: "Where settings come from",
+      ok: stale === 0,
+      detail: rows.join(" · "),
+      fix: stale ? "Admin → Channels always wins. To avoid confusion, empty those lines in functions\\.env (keep the file) and run deploy." : undefined,
+    });
+  } catch {
+    // informational only
+  }
+  try {
+    const { envProviders } = await import("./ai");
+    const health = (await db.doc("config/aiHealth").get()).data() ?? {};
+    const env = envProviders();
+    if (env.length) {
+      const bad = env.filter((p) => (health[p.id] as { ok?: boolean } | undefined)?.ok === false);
+      checks.push({
+        name: "AI keys in functions\\.env (used after the Admin keys)",
+        ok: bad.length ? false : null,
+        detail: env.map((p) => `${p.label}: ${(health[p.id] as { ok?: boolean } | undefined)?.ok === false ? "FAILING" : (health[p.id] as { ok?: boolean } | undefined)?.ok ? "ok" : "not used yet"}`).join(" · "),
+        fix: bad.length ? "Remove the failing keys from functions\\.env (or replace them) and run deploy. Keys in Admin → AI engine are tried first." : undefined,
+      });
+    }
+  } catch {
+    // informational only
+  }
+
   const meta = status.meta as Record<string, any> | undefined;
   checks.push({
     name: "WhatsApp: last call received from Meta",

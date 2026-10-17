@@ -90,7 +90,7 @@ export async function findOrCreateLead(p: InboundPerson): Promise<string> {
 export async function addInbound(
   leadId: string,
   channel: Channel,
-  msg: { id?: string; text?: string; audioB64?: string; audioMime?: string; meta?: Record<string, unknown>; silent?: boolean },
+  msg: { id?: string; text?: string; audioB64?: string; audioMime?: string; imageB64?: string; imageMime?: string; meta?: Record<string, unknown>; silent?: boolean },
   identity: Partial<Pick<Lead, "waId" | "telegramId" | "igId">> = {},
 ): Promise<string> {
   const leadRef = db.doc(`leads/${leadId}`);
@@ -114,6 +114,10 @@ export async function addInbound(
   if (msg.audioB64) {
     data.audioB64 = msg.audioB64;
     data.audioMime = msg.audioMime ?? "audio/ogg";
+  }
+  if (msg.imageB64) {
+    data.imageB64 = msg.imageB64;
+    data.imageMime = msg.imageMime ?? "image/jpeg";
   }
   const col = leadRef.collection("messages");
   // Idempotent when the provider gives us a message id (webhooks are retried).

@@ -90,8 +90,18 @@ export const metaWebhook = onRequest({ timeoutSeconds: 120, memory: "512MiB" }, 
   const { noteWebhook, dispatchSafely } = await import("./dispatch");
   if (req.method === "GET") {
     const c = await channelConfig(true);
-    const ok = req.query["hub.mode"] === "subscribe" && req.query["hub.verify_token"] === c.waVerifyToken;
-    await noteWebhook("meta", { kind: "verify", ok, detail: ok ? "verification accepted" : "verify token did not match Admin → Channels" });
+    const sent = String(req.query["hub.verify_token"] ?? "").trim();
+    // The Admin value wins, but a token still saved in functions/.env is accepted too, so an
+    // old .env value can never block "Verify and save".
+    const accepted = new Set([c.waVerifyToken, (process.env.WA_VERIFY_TOKEN ?? "").trim()].filter(Boolean));
+    const ok = req.query["hub.mode"] === "subscribe" && accepted.has(sent);
+    await noteWebhook("meta", {
+      kind: "verify",
+      ok,
+      detail: ok
+        ? "verification accepted"
+        : `Meta sent verify token "${sent}" but Admin → Channels has "${c.waVerifyToken}". Type exactly the same word in Meta → WhatsApp → Configuration.`,
+    });
     res.status(ok ? 200 : 403).send(ok ? String(req.query["hub.challenge"] ?? "") : "forbidden");
     return;
   }
@@ -205,6 +215,13 @@ export const onSelfTest = onDocumentWritten({ document: "selftests/{id}", region
 export const api = onRequest({ cors: true, timeoutSeconds: 300, memory: "512MiB", cpu: 1, concurrency: 80 }, async (req, res) => {
   const { handleApi } = await import("./api");
   await handleApi(req, res);
+});
+
+/** Every minute: chats with no reply for 2 minutes after Asha's last message are closed. */
+export const sessionCloser = onSchedule({ schedule: "every 1 minutes", timeZone: "Asia/Kolkata", timeoutSeconds: 120 }, async () => {
+  const { closeIdleSessions } = await import("./flow");
+  const n = await closeIdleSessions();
+  if (n) console.log(`sessionCloser: closed ${n} idle chats`);
 });
 
 /** Every 5 minutes: reminders + follow-ups. */

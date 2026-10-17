@@ -106,6 +106,8 @@ class Repo {
     String? text,
     String? audioB64,
     String? audioMime,
+    String? imageB64,
+    String? imageMime,
     String channel = 'web',
     Map<String, dynamic>? meta,
   }) async {
@@ -122,6 +124,8 @@ class Repo {
     if (text != null) msg['text'] = text;
     if (audioB64 != null) msg['audioB64'] = audioB64;
     if (audioMime != null) msg['audioMime'] = audioMime;
+    if (imageB64 != null) msg['imageB64'] = imageB64;
+    if (imageMime != null) msg['imageMime'] = imageMime;
     if (meta != null && meta.isNotEmpty) msg['meta'] = meta;
     final ref = await messages(leadId).add(msg);
     _dispatch(leadId, ref.id);
@@ -203,6 +207,34 @@ class Repo {
       Api.run('dismissDuplicate', {'leadId': leadId, 'otherId': otherId});
   static Future<void> assign(String leadId, String uid) => Api.run('assign', {'leadId': leadId, 'uid': uid});
   static Future<void> book(String leadId, String slotId) => Api.run('book', {'leadId': leadId, 'slotId': slotId});
+
+  /// Website "Restart": the next message starts a fresh chat.
+  static Future<void> restartChat(String leadId) => Api.run('restartChat', {'leadId': leadId});
+
+  /// Admin: payment receipt checked → allot the course (approve) or reject.
+  static Future<String> verifyEnrollment(String leadId, {required bool approve, String? courseId, String? note}) async {
+    final d = await Api.run('verifyEnrollment', {
+      'leadId': leadId,
+      'approve': approve,
+      'courseId': ?courseId,
+      'note': ?note,
+    });
+    return '${d['detail'] ?? 'Done'}';
+  }
+
+  /// The stored receipt photo of an enrolment.
+  static Future<Map<String, dynamic>?> message(String leadId, String msgId) async =>
+      (await messages(leadId).doc(msgId).get()).data();
+
+  /// Admin → Overview → Enrollment payments (public: the student's chat shows the QR).
+  static Stream<Map<String, dynamic>> watchPayment() => db
+      .doc('config/public')
+      .snapshots()
+      .map((s) => ((s.data()?['payment'] as Map?) ?? const {}).cast<String, dynamic>());
+
+  static Future<void> savePayment({required String upiId, required String payee, required int amount}) => db
+      .doc('config/public')
+      .set({'payment': {'upiId': upiId.trim(), 'payee': payee.trim(), 'amount': amount}}, SetOptions(merge: true));
 
   /// Sends this lead's 24 h and 1 h reminders (demo class and/or call) right now.
   static Future<String> testReminders(String leadId) async {

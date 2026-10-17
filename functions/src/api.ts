@@ -89,6 +89,26 @@ export async function handleApi(req: Request, res: Response): Promise<void> {
         res.json({ ...(await dispatchSafely(leadId, msgId, w.anonymous ? "app:web-chat" : "app:desk")) });
         return;
       }
+      case "restartChat": {
+        // Website "Restart": the next message starts a fresh chat (the page asks the language).
+        if (!w) return deny("sign-in required");
+        const leadId = String(body.leadId ?? "");
+        if (!isStaff(w)) {
+          const lead = (await db.doc(`leads/${leadId}`).get()).data() as Lead | undefined;
+          if (!lead?.viewerUids?.includes(w.uid)) return deny();
+        }
+        const { restartSession } = await import("./flow");
+        await restartSession(leadId);
+        res.json({ ok: true });
+        return;
+      }
+      case "verifyEnrollment": {
+        // Admin checked the payment receipt: allot the course (or reject) and tell the student.
+        if (!isAdmin(w)) return deny("only an admin can verify payments");
+        const { verifyEnrollment } = await import("./flow");
+        res.json(await verifyEnrollment(String(body.leadId ?? ""), body.approve !== false, w!.name, body.courseId ? String(body.courseId) : undefined, body.note ? String(body.note) : undefined));
+        return;
+      }
       case "testReminders": {
         // Desk → lead → "Test reminders now": the 24 h and 1 h reminders go out immediately.
         if (!isStaff(w)) return deny();

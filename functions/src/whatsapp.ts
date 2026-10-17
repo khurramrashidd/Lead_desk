@@ -5,7 +5,7 @@
 import { channelConfig } from "./channels";
 import { addInbound, findOrCreateLead } from "./leads";
 
-async function downloadWaMedia(mediaId: string): Promise<{ b64: string; mime: string } | null> {
+async function downloadWaMedia(mediaId: string, maxBytes = 700_000): Promise<{ b64: string; mime: string } | null> {
   const c = await channelConfig();
   const auth = { Authorization: `Bearer ${c.waToken}` };
   const meta = await fetch(`https://graph.facebook.com/${c.graphVersion}/${mediaId}`, { headers: auth });
@@ -14,7 +14,7 @@ async function downloadWaMedia(mediaId: string): Promise<{ b64: string; mime: st
   const file = await fetch(info.url, { headers: auth });
   if (!file.ok) return null;
   const buf = Buffer.from(await file.arrayBuffer());
-  if (buf.length > 700_000) return null; // keep Firestore documents small
+  if (buf.length > maxBytes) return null; // keep Firestore documents small
   return { b64: buf.toString("base64"), mime: (info.mime_type || "audio/ogg").split(";")[0].trim() };
 }
 
@@ -37,6 +37,8 @@ interface WaMessage {
   text?: { body: string };
   audio?: { id: string };
   voice?: { id: string };
+  image?: { id: string; caption?: string; mime_type?: string };
+  document?: { id: string; caption?: string; mime_type?: string };
   button?: { text: string; payload?: string };
   interactive?: { button_reply?: { id?: string; title: string }; list_reply?: { id?: string; title: string } };
 }
@@ -51,12 +53,22 @@ async function handleWhatsApp(value: any, out: Stored[]): Promise<void> {
   for (const m of (value?.messages ?? []) as WaMessage[]) {
     const profileName = contacts.find((c) => c.wa_id === m.from)?.profile?.name;
     const leadId = await findOrCreateLead({ channel: "whatsapp", name: profileName, phone: m.from, waId: m.from });
-    const msg: { id: string; text?: string; audioB64?: string; audioMime?: string; meta: Record<string, unknown> } = {
+    const msg: { id: string; text?: string; audioB64?: string; audioMime?: string; imageB64?: string; imageMime?: string; meta: Record<string, unknown> } = {
       id: `wa_${m.id}`,
       meta: { waMessageId: m.id },
     };
     const audio = m.audio ?? m.voice;
+    const image = m.image ?? (m.document?.mime_type?.startsWith("image/") ? m.document : undefined);
     if (m.type === "text" && m.text) msg.text = m.text.body;
+    else if (image) {
+      // A photo, e.g. the payment receipt.
+      const media = await downloadWaMedia(image.id);
+      if (media) {
+        msg.imageB64 = media.b64;
+        msg.imageMime = media.mime.startsWith("image/") ? media.mime : "image/jpeg";
+        msg.text = image.caption ? `📷 Photo: ${image.caption}` : "📷 Photo";
+      } else msg.text = "(photo too large to save: please send a screenshot)";
+    }
     else if (audio) {
       const media = await downloadWaMedia(audio.id);
       if (media) {
@@ -138,4 +150,30 @@ export async function handleMetaWebhook(body: any): Promise<Stored[]> {
     }
   }
   return out;
+}
+
+/** Uploads the UPI QR image and sends it with a caption. */
+export async function sendWhatsAppImage(toWaId: string, png: Buffer, caption: string): Promise<{ ok: boolean; error?: string }> {
+  const c = await channelConfig();
+  if (!c.waToken || !c.waPhoneId) return { ok: false, error: "WhatsApp not connected" };
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", "image/png");
+  form.append("file", new Blob([new Uint8Array(png)], { type: "image/png" }), "upi-qr.png");
+  const up = await fetch(`https://graph.facebook.com/${c.graphVersion}/${c.waPhoneId}/media`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${c.waToken}` },
+    body: form,
+    signal: AbortSignal.timeout(20_000),
+  });
+  const uj = (await up.json().catch(() => ({}))) as { id?: string; error?: { message?: string } };
+  if (!up.ok || !uj.id) return { ok: false, error: uj.error?.message ?? `upload ${up.status}` };
+  const res = await fetch(`https://graph.facebook.com/${c.graphVersion}/${c.waPhoneId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${c.waToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to: toWaId, type: "image", image: { id: uj.id, caption: caption.slice(0, 1000) } }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (res.ok) return { ok: true };
+  return { ok: false, error: (await res.text()).slice(0, 200) };
 }

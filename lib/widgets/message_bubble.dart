@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -19,6 +21,7 @@ class MessageBubble extends StatelessWidget {
     this.channel,
     this.meta = const {},
     this.prospectView = false,
+    this.imageB64,
   });
 
   factory MessageBubble.fromDoc(Map<String, dynamic> d, {bool prospectView = false}) => MessageBubble(
@@ -30,6 +33,7 @@ class MessageBubble extends StatelessWidget {
         channel: d['channel'] as String?,
         meta: (d['meta'] as Map?)?.cast<String, dynamic>() ?? const {},
         prospectView: prospectView,
+        imageB64: d['imageB64'] as String?,
       );
 
   final String role; // user | ai | counsellor | system
@@ -40,6 +44,9 @@ class MessageBubble extends StatelessWidget {
   final String? channel;
   final Map<String, dynamic> meta;
   final bool prospectView;
+
+  /// A photo the prospect sent (e.g. the payment receipt).
+  final String? imageB64;
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +139,7 @@ class MessageBubble extends StatelessWidget {
                     ),
                   ),
                 ),
+              if (imageB64 != null) _Photo(b64: imageB64!),
               if (isVoice)
                 _VoiceRow(label: shown.isEmpty ? 'Voice note' : shown, color: fg)
               else
@@ -174,6 +182,12 @@ class MessageBubble extends StatelessWidget {
         'reminder_24h' => 'reminder, 24 h before',
         'reminder_1h' => 'reminder, 1 h before',
         'followup' => 'automatic follow-up',
+        'session_closed' => 'chat closed after 2 min of silence',
+        'enrollment_verified' => 'payment verified, course allotted',
+        'enrollment_rejected' => 'payment not verified',
+        'call_reminder_24h' => 'call reminder, 24 h before',
+        'call_reminder_1h' => 'call reminder, 1 h before',
+        'language' => 'language question',
         _ => 'automatic',
       };
 
@@ -187,6 +201,34 @@ class MessageBubble extends StatelessWidget {
         'instagram' => '📸 Instagram',
         _ => '🌐 Web chat',
       };
+}
+
+class _Photo extends StatelessWidget {
+  const _Photo({required this.b64});
+  final String b64;
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = base64Decode(b64);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: InkWell(
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (c) => Dialog(
+            child: InteractiveViewer(child: Image.memory(bytes, fit: BoxFit.contain)),
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220, maxWidth: 260),
+            child: Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _VoiceRow extends StatelessWidget {

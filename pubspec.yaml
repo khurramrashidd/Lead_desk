@@ -48,6 +48,8 @@ dependencies:
   qr_flutter: ^4.1.0
   # Plays a recorded voice note back before it is sent (web + Android).
   audioplayers: ^6.8.1
+  # Payment receipt photo from the gallery / camera (web + Android), resized before upload.
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:

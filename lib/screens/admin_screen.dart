@@ -29,6 +29,12 @@ class AdminScreen extends StatelessWidget {
         appBar: AppBar(
           title: const Text('Admin console · $kBuildLabel'),
           actions: [
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).pushNamed('/master'),
+              icon: const Icon(Icons.insights_rounded, size: 17),
+              label: const Text('Master dashboard'),
+            ),
+            const SizedBox(width: 6),
             TextButton.icon(
               onPressed: () => Navigator.of(context).pushNamed('/desk'),
               icon: const Icon(Icons.dashboard_outlined, size: 17),
@@ -101,6 +107,15 @@ class _OverviewTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const DiagnoseCard(),
+      const _Block(
+        icon: Icons.currency_rupee_rounded,
+        color: AppTheme.success,
+        title: 'Enrollment payments (UPI)',
+        help: 'After a course is recommended, students see an "Enroll now" button. Asha then shows this UPI QR code for the '
+            'registration fee; the student sends a photo of the receipt, and you verify it and allot the course '
+            '(Master dashboard or the lead on the desk).',
+        child: _PaymentSettings(),
+      ),
       // An old demo clock offset would shift every reminder: show a reset only when one is set.
       StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: Repo.watchDemoConfig(),
@@ -132,6 +147,104 @@ class _OverviewTab extends StatelessWidget {
           _Qr('Website form', formLink('form')),
         ]),
       ),
+    ]);
+  }
+}
+
+class _PaymentSettings extends StatefulWidget {
+  const _PaymentSettings();
+
+  @override
+  State<_PaymentSettings> createState() => _PaymentSettingsState();
+}
+
+class _PaymentSettingsState extends State<_PaymentSettings> {
+  final _upi = TextEditingController();
+  final _payee = TextEditingController();
+  final _amount = TextEditingController(text: '10');
+  bool _loaded = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Repo.watchPayment().first.then((p) {
+      if (!mounted) return;
+      setState(() {
+        _upi.text = '${p['upiId'] ?? ''}';
+        _payee.text = '${p['payee'] ?? ''}';
+        _amount.text = '${p['amount'] ?? 10}';
+        _loaded = true;
+      });
+    }).catchError((Object _) {
+      if (mounted) setState(() => _loaded = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _upi.dispose();
+    _payee.dispose();
+    _amount.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final amount = int.tryParse(_amount.text.trim()) ?? 0;
+    if (!RegExp(r'^[\w.\-]{2,}@[a-zA-Z]{2,}$').hasMatch(_upi.text.trim())) {
+      messenger.showSnackBar(const SnackBar(content: Text('Enter a valid UPI ID, e.g. institute@okhdfcbank')));
+      return;
+    }
+    if (amount < 1 || amount > 100000) {
+      messenger.showSnackBar(const SnackBar(content: Text('Registration fee must be between ₹1 and ₹1,00,000')));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await Repo.savePayment(upiId: _upi.text, payee: _payee.text, amount: amount);
+      messenger.showSnackBar(SnackBar(content: Text('✅ Saved: students now pay ₹$amount to ${_upi.text.trim()}')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) return const LinearProgressIndicator();
+    final amount = int.tryParse(_amount.text.trim()) ?? 0;
+    final link = 'upi://pay?pa=${Uri.encodeComponent(_upi.text.trim())}&pn=${Uri.encodeComponent(_payee.text.trim())}&am=$amount.00&cu=INR';
+    return Wrap(spacing: 24, runSpacing: 16, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      SizedBox(
+        width: 360,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          TextField(controller: _upi, onChanged: (_) => setState(() {}), decoration: const InputDecoration(labelText: 'UPI ID', hintText: 'institute@okhdfcbank', isDense: true)),
+          const SizedBox(height: 10),
+          TextField(controller: _payee, onChanged: (_) => setState(() {}), decoration: const InputDecoration(labelText: 'Name shown to the payer', isDense: true)),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _amount,
+            onChanged: (_) => setState(() {}),
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(labelText: 'Registration fee (₹)', helperText: '₹10 for the demo; change to ₹50 … ₹5,000 any time', isDense: true),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: const Icon(Icons.save_rounded, size: 18),
+            label: const Text('Save payment settings'),
+          ),
+        ]),
+      ),
+      if (_upi.text.trim().contains('@'))
+        Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(color: Colors.white, padding: const EdgeInsets.all(6), child: QrImageView(data: link, size: 150, backgroundColor: Colors.white)),
+          const SizedBox(height: 6),
+          Text('Preview: ₹$amount', style: const TextStyle(fontWeight: FontWeight.w700)),
+        ]),
     ]);
   }
 }

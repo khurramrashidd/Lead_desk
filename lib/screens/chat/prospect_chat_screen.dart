@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app_theme.dart';
 import '../../l10n.dart';
@@ -66,6 +71,13 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
   bool _sending = false;
   int _lastCount = 0;
 
+  /// A new chat (first visit or after Restart) starts by choosing the language.
+  bool _needLang = false;
+
+  Map<String, dynamic> get _session => (_lead['session'] as Map?)?.cast<String, dynamic>() ?? const {};
+  bool get _closed => _session['status'] == 'closed';
+  String get _enrollStatus => '${(_lead['enrollment'] as Map?)?['status'] ?? ''}';
+
   // Voice preview: recorded, not sent yet.
   VoiceNote? _pending;
   bool _playing = false;
@@ -106,6 +118,68 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
     if (id != null) {
       await prefs.setString(_prefsKey, id);
       _follow(id);
+    } else if (mounted) {
+      setState(() => _needLang = true);
+    }
+  }
+
+  /// Fresh conversation: the page asks the language again; older messages are hidden.
+  Future<void> _restart({bool confirm = true}) async {
+    if (confirm) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text(tr('chat.restartAsk')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('chat.no'))),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('chat.yes'))),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    if (mounted) setState(() => _needLang = true);
+    final id = _leadId;
+    if (id != null) {
+      try {
+        await Repo.restartChat(id);
+      } catch (e) {
+        debugPrint('restart failed: $e');
+      }
+    }
+  }
+
+  Future<void> _pickLang(AppLang l) async {
+    await L10n.set(l);
+    if (mounted) setState(() => _needLang = false);
+  }
+
+  /// The payment receipt: a photo from the gallery (resized so it fits in the chat).
+  Future<void> _uploadReceipt() async {
+    if (_sending) return;
+    try {
+      final file = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1400, maxHeight: 1400, imageQuality: 70);
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 700000) {
+        _snack(tr('pay.big'));
+        return;
+      }
+      setState(() => _sending = true);
+      final id = await _ensureLead();
+      await Repo.sendProspectMessage(
+        id,
+        text: '📷 Photo',
+        imageB64: base64Encode(bytes),
+        imageMime: file.mimeType ?? 'image/jpeg',
+        meta: {'uiLang': L10n.lang.value.name},
+      );
+      _snack(tr('pay.done'));
+    } catch (e) {
+      _snack(tr('chat.failed'));
+      debugPrint('receipt upload failed: $e');
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
   }
 
@@ -313,7 +387,7 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
         Expanded(
           child: Container(
             color: context.isDark ? const Color(0xFF0A0F1A) : const Color(0xFFF3F6F7),
-            child: _leadId == null ? _welcome() : _thread(),
+            child: _needLang ? _langPicker() : (_leadId == null ? _welcome() : _thread()),
           ),
         ),
         _composer(context),
@@ -368,6 +442,11 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
               ],
             ),
           ),
+          IconButton(
+            tooltip: tr('chat.restart'),
+            icon: const Icon(Icons.restart_alt_rounded, color: Colors.white),
+            onPressed: () => _restart(),
+          ),
           const LangMenuButton(),
           PopupMenuButton<String>(
             tooltip: 'More',
@@ -408,6 +487,29 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
         const SizedBox(width: 12),
         Flexible(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
       ]);
+
+  // ---------------------------------------------------------- language first
+  Widget _langPicker() => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 26, 16, 16),
+        children: [
+          const MessageBubble(role: 'ai', text: 'Choose your language · अपनी भाषा चुनें · तुमची भाषा निवडा'),
+          const SizedBox(height: 14),
+          for (final l in AppLang.values)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: SizedBox(
+                height: 54,
+                child: FilledButton.tonal(
+                  onPressed: () => _pickLang(l),
+                  style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.r16))),
+                  child: Text(L10n.name(l), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ),
+          const SizedBox(height: 6),
+          Text(tr('chat.pickLangSub'), textAlign: TextAlign.center, style: context.texts.bodySmall?.copyWith(fontSize: 12.5)),
+        ],
+      );
 
   // ---------------------------------------------------------------- welcome
   Widget _welcome() => ListView(
@@ -479,7 +581,15 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
       stream: _messageStream,
       builder: (context, snap) {
         final docs = snap.data?.docs ?? [];
-        final visible = docs.where((d) => d.data()['role'] != 'system' || d.data()['meta']?['kind'] == 'takeover').toList();
+        // Only this chat session: a restart or an auto-closed chat starts with a clean page.
+        final startedAt = Ist.fromTimestamp(_session['startedAt']);
+        final visible = docs.where((d) {
+          final m = d.data();
+          if (m['role'] == 'system' && m['meta']?['kind'] != 'takeover') return false;
+          final at = Ist.fromTimestamp(m['createdAt']);
+          return startedAt == null || at == null || !at.isBefore(startedAt);
+        }).toList();
+        if (visible.isEmpty && !_closed) return _welcome();
         final last = visible.isEmpty ? null : visible.last.data();
         final lastAt = Ist.fromTimestamp(last?['createdAt']) ?? DateTime.now();
         final waitingSecs = last != null && last['role'] == 'user' ? DateTime.now().difference(lastAt).inSeconds : -1;
@@ -500,9 +610,33 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
           children: [
             MessageBubble(role: 'ai', text: _greeting),
-            for (final d in visible) MessageBubble.fromDoc(d.data(), prospectView: true),
-            if (waitingSecs >= 0) _waiting(waitingSecs, ai, humanMode),
-            if (waitingSecs < 0 && last != null && last['role'] == 'ai') _quickReplies(last),
+            for (final d in visible) ...[
+              MessageBubble.fromDoc(d.data(), prospectView: true),
+              if (d.data()['meta']?['kind'] == 'payment_qr')
+                _PaymentCard(
+                  meta: (d.data()['meta'] as Map).cast<String, dynamic>(),
+                  canUpload: _enrollStatus == 'awaiting_receipt',
+                  busy: _sending,
+                  onUpload: _uploadReceipt,
+                  onCopied: () => _snack(tr('pay.copied')),
+                ),
+            ],
+            if (_closed)
+              _Note(
+                icon: Icons.lock_clock_rounded,
+                text: tr('chat.closed'),
+                actions: [
+                  FilledButton.icon(
+                    onPressed: () => _restart(confirm: false),
+                    icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                    label: Text(tr('chat.startAgain')),
+                  ),
+                ],
+              )
+            else ...[
+              if (waitingSecs >= 0) _waiting(waitingSecs, ai, humanMode),
+              if (waitingSecs < 0 && last != null && last['role'] == 'ai') _quickReplies(last),
+            ],
             const SizedBox(height: 8),
           ],
         );
@@ -571,6 +705,25 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
 
   // --------------------------------------------------------------- composer
   Widget _composer(BuildContext context) {
+    if (_needLang) return const SizedBox.shrink();
+    if (_closed && _leadId != null) {
+      return Container(
+        color: context.scheme.surface,
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton.icon(
+              onPressed: () => _restart(confirm: false),
+              icon: const Icon(Icons.restart_alt_rounded),
+              label: Text(tr('chat.startAgain'), style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ),
+        ),
+      );
+    }
     if (_recording) return _recordingBar(context);
     if (_pending != null) return _previewBar(context, _pending!);
 
@@ -731,6 +884,75 @@ class _ProspectChatScreenState extends State<ProspectChatScreen> {
               ),
             ]),
           ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// The admin's UPI QR for the registration fee, with "open UPI app" and the receipt upload.
+class _PaymentCard extends StatelessWidget {
+  const _PaymentCard({required this.meta, required this.canUpload, required this.busy, required this.onUpload, required this.onCopied});
+  final Map<String, dynamic> meta;
+  final bool canUpload;
+  final bool busy;
+  final VoidCallback onUpload;
+  final VoidCallback onCopied;
+
+  @override
+  Widget build(BuildContext context) {
+    final link = '${meta['upiLink'] ?? ''}';
+    final upi = '${meta['upiId'] ?? ''}';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(top: 4, bottom: 8),
+        padding: const EdgeInsets.all(14),
+        constraints: const BoxConstraints(maxWidth: 340),
+        decoration: BoxDecoration(
+          color: context.scheme.surface,
+          borderRadius: BorderRadius.circular(AppTheme.r16),
+          border: Border.all(color: AppTheme.indigo.withValues(alpha: 0.35)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+          Text(tr('pay.title'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 2),
+          Text('₹${meta['amount'] ?? ''} · ${meta['course'] ?? ''}', textAlign: TextAlign.center, style: context.texts.bodySmall),
+          const SizedBox(height: 10),
+          if (link.isNotEmpty)
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.all(6),
+              child: QrImageView(data: link, size: 190, backgroundColor: Colors.white),
+            ),
+          const SizedBox(height: 6),
+          Text(tr('pay.scan'), style: context.texts.bodySmall?.copyWith(fontSize: 12)),
+          const SizedBox(height: 4),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Flexible(child: SelectableText(upi, style: const TextStyle(fontWeight: FontWeight.w700))),
+            IconButton(
+              tooltip: 'Copy',
+              icon: const Icon(Icons.copy_rounded, size: 16),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: upi));
+                onCopied();
+              },
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Wrap(alignment: WrapAlignment.center, spacing: 8, runSpacing: 8, children: [
+            OutlinedButton.icon(
+              onPressed: link.isEmpty ? null : () => launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication),
+              icon: const Icon(Icons.account_balance_wallet_rounded, size: 17),
+              label: Text(tr('pay.open')),
+            ),
+            if (canUpload)
+              FilledButton.icon(
+                onPressed: busy ? null : onUpload,
+                icon: const Icon(Icons.upload_file_rounded, size: 17),
+                label: Text(tr('pay.upload')),
+              ),
+          ]),
         ]),
       ),
     );

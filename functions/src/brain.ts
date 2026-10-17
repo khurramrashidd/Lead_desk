@@ -25,6 +25,7 @@ import { channelConfig, deliverOn } from "./channels";
 import { normalizePhone } from "./identity";
 import { bumpStat } from "./stats";
 import { singleFlight } from "./cache";
+import { flowGate, ft, qrPng, touchSession, type ChatSession, type Enrollment } from "./flow";
 
 let kbCache: { kb: KnowledgeBase; at: number } | null = null;
 /** Hash of the knowledge base: any edit in Admin changes it and invalidates cached answers. */
@@ -315,7 +316,7 @@ ${JSON.stringify(kb)}
 AVAILABLE_SLOTS:
 ${JSON.stringify(slotList)}
 
-LEAD_STATE_SO_FAR:
+${(lead as Lead & { session?: ChatSession }).session?.lang ? `CHOSEN LANGUAGE: at the start of this chat the prospect picked ${{ en: "English", hi: "Hindi (Devanagari)", mr: "Marathi (Devanagari)" }[(lead as Lead & { session?: ChatSession }).session!.lang!]}. Reply in it, unless their latest message is clearly in another language.\n\n` : ""}LEAD_STATE_SO_FAR:
 ${JSON.stringify(state)}${intake ? `\n\nINTAKE ANSWERS (asked by the system just before this reply):\n${intake}` : ""}`;
 }
 
@@ -344,6 +345,8 @@ function toTurns(history: Message[], unanswered: Set<number>): Turn[] {
 }
 
 export interface BrainResult {
+  /** A UPI payment QR to send as an image on WhatsApp / Telegram (the web chat draws it). */
+  qr?: { link: string };
   reply: string;
   channel: string;
   /** Tappable choices (intake questions, aptitude A/B/C): buttons on WhatsApp, a keyboard on Telegram. */
@@ -467,7 +470,22 @@ export async function respondAndDeliver(leadId: string): Promise<number> {
   if (!lead) return 0;
   for (const r of results) {
     if (!["whatsapp", "telegram", "instagram"].includes(r.channel)) continue;
-    const d = await deliverOn(r.channel, lead, r.reply, { options: r.options, askContact: r.askContact, lang: r.lang });
+    let d: { delivered: boolean; note: string } | null = null;
+    if (r.qr && (r.channel === "telegram" || r.channel === "whatsapp")) {
+      // The payment QR goes out as an image with the instructions as its caption.
+      try {
+        const png = await qrPng(r.qr.link);
+        const sent =
+          r.channel === "telegram"
+            ? lead.telegramId && !lead.telegramId.startsWith("sim:") ? await (await import("./telegram")).sendTelegramPhoto(lead.telegramId, png, r.reply) : { ok: false, error: "no Telegram chat" }
+            : lead.waId && !lead.waId.startsWith("sim:") ? await (await import("./whatsapp")).sendWhatsAppImage(lead.waId, png, r.reply) : { ok: false, error: "no WhatsApp id" };
+        if (sent.ok) d = { delivered: true, note: "" };
+        else console.warn("QR image not sent, falling back to text", sent.error);
+      } catch (e) {
+        console.warn("QR image failed, falling back to text", e);
+      }
+    }
+    d ??= await deliverOn(r.channel, lead, r.reply, { options: r.options, askContact: r.askContact, lang: r.lang });
     if (!d.delivered && r.msgId) {
       // Visible on the desk: e.g. "(#131030) Recipient phone number not in allowed list".
       await db
@@ -479,11 +497,12 @@ export async function respondAndDeliver(leadId: string): Promise<number> {
       await db.doc(`leads/${leadId}`).set({ deliveryIssue: FieldValue.delete() }, { merge: true });
     }
   }
+  await touchSession(leadId).catch((e) => console.warn("session clock", e));
   return results.length;
 }
 
 /** Answers every prospect message that has not been answered yet, in one reply. */
-export async function counsel(leadId: string): Promise<BrainResult | null> {
+export async function counsel(leadId: string, depth = 0): Promise<BrainResult | null> {
   const leadRef = db.doc(`leads/${leadId}`);
   const lead = ((await leadRef.get()).data() ?? {}) as Lead;
   if (lead.mergedInto) return null;
@@ -494,7 +513,18 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
     openSlots(now),
     leadRef.collection("messages").orderBy("createdAt", "desc").limit(24).get(),
   ]);
-  const docs = histSnap.docs.slice().reverse();
+  // The current chat session only: a restart or an auto-closed chat starts a clean slate, and
+  // the language question and its answer are not part of the conversation.
+  const sessionStart = (lead as Lead & { session?: ChatSession }).session?.startedAt?.toMillis?.() ?? 0;
+  const docs = histSnap.docs
+    .slice()
+    .reverse()
+    .filter((d) => {
+      const m = d.data() as Message;
+      if (((m.meta ?? {}) as Record<string, unknown>).sessionControl) return false;
+      const at = m.createdAt?.toMillis?.();
+      return !sessionStart || at === undefined || at >= sessionStart;
+    });
   const history = docs.map((d) => d.data() as Message);
 
   // What has not been answered yet: prospect messages after the last real reply.
@@ -524,6 +554,15 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
     return null;
   }
 
+  // ---- Language first, restart, enrolment + payment receipt (no AI needed) ----
+  const gate = await flowGate({ leadId, lead, msg, msgId: latestDoc.id, kb });
+  if (gate?.skip) return null;
+  if (gate?.rerun) return depth < 2 ? counsel(leadId, depth + 1) : null;
+  if (gate?.reply) {
+    await leadRef.set({ lastMessageAt: FieldValue.serverTimestamp(), lastChannel: msg.channel }, { merge: true });
+    return { reply: gate.reply.text, channel: gate.reply.channel, options: gate.reply.options, lang: gate.reply.lang, msgId: gate.reply.msgId, qr: gate.reply.qr };
+  }
+
   // ---- Intake questions (who / name / contact / course) before counselling ----
   let intake = "";
   let identityFromIntake = false;
@@ -534,7 +573,7 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
       choiceId: typeof meta.choiceId === "string" ? meta.choiceId : undefined,
       isVoice: !!msg.audioB64,
       phoneKnown: msg.channel === "whatsapp" && !!lead.phone,
-      langHint: String(meta.uiLang ?? meta.langHint ?? lead.uiLang ?? lead.language ?? ""),
+      langHint: String((lead as Lead & { session?: ChatSession }).session?.lang ?? meta.uiLang ?? meta.langHint ?? lead.uiLang ?? lead.language ?? ""),
       introShown: msg.channel === "web",
       courses: kb.courses,
       instituteName: kb.instituteName,
@@ -610,7 +649,7 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
   try {
     if (cacheable) {
       const key = sha(
-        JSON.stringify([PROMPT_VERSION, msg.channel, kbVersion, slots.slice(0, 5).map((s) => s.id), leadState(lead), lead.aptitude?.status ?? "", normaliseQuestion(text)]),
+        JSON.stringify([PROMPT_VERSION, msg.channel, (lead as Lead & { session?: ChatSession }).session?.lang ?? "", kbVersion, slots.slice(0, 5).map((s) => s.id), leadState(lead), lead.aptitude?.status ?? "", normaliseQuestion(text)]),
       );
       const r = await singleFlight<Thought>(key, () => think(leadId, system, turns, kb, userTexts), (v) => !v.out.book_slot_id && !v.out.handoff);
       thought = r.value;
@@ -717,6 +756,14 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
     }
   }
 
+  // ---- "Enroll now" once a course has been recommended ----
+  const enr = (lead as Lead & { enrollment?: Enrollment }).enrollment;
+  const recommended = out.recommendation?.course_id || lead.recommendation?.courseId;
+  const enrollOptions =
+    !shownQuestion && recommended && (!enr || enr.status === "rejected" || enr.status === "choosing_course") && !lead.simulated && !lead.selftest && !lead.burst && !lead.seed
+      ? [{ id: "enroll:yes", label: ft("enrollBtn", out.language) }]
+      : [];
+
   // ---- Write the reply ----
   const replyRef = await leadRef.collection("messages").add({
     role: "ai",
@@ -730,6 +777,7 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
       ...(cacheState !== "off" && cacheState !== "miss" ? { cache: cacheState } : {}),
       ...(fresh.length > 1 ? { answeredTogether: fresh.length } : {}),
       ...(shownQuestion ? { kind: "aptitude", qid: shownQuestion.id, options: shownQuestion.options.map((o) => `${o.key}) ${o.text}`) } : {}),
+      ...(enrollOptions.length ? { options: enrollOptions.map((o) => o.label), choices: enrollOptions } : {}),
     },
   });
   await bumpStat("replies");
@@ -860,6 +908,7 @@ export async function counsel(leadId: string): Promise<BrainResult | null> {
     msgId: replyRef.id,
     lang: out.language,
     ...(shownQuestion ? { options: shownQuestion.options.map((o) => ({ id: `apt:${o.key}`, label: `${o.key}) ${o.text}` })) } : {}),
+    ...(enrollOptions.length ? { options: enrollOptions } : {}),
   };
 }
 
